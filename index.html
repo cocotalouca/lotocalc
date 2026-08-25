@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lotocalc</title>
+<meta name="description" content="Gerador de jogos para todas as modalidades das Loterias CAIXA — volante interativo, filtros estatísticos, fechamentos e conferidor.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Instrument+Sans:wght@400..700&family=Martian+Mono:wght@400..700&display=swap">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<a class="pular" href="#bancada">Pular para o gerador</a>
+
+<header class="cabeca">
+  <div class="marca">
+    <span class="marca__glifo" aria-hidden="true"></span>
+    <span class="marca__nome">Lotocalc</span>
+    <span class="marca__sub">gerador de jogos · loterias caixa</span>
+  </div>
+  <div class="cabeca__acoes">
+    <button type="button" class="btn btn--fantasma" id="btnAjuda">Como funciona</button>
+    <button type="button" class="btn btn--icone" id="btnTema" aria-label="Alternar tema claro e escuro" title="Alternar tema">
+      <span class="btn__tema-icone" aria-hidden="true">◐</span>
+    </button>
+  </div>
+</header>
+
+<nav class="modalidades" id="navModalidades" aria-label="Modalidades de loteria"></nav>
+
+<main class="bancada" id="bancada">
+
+  <!-- ============ COLUNA DE CONTROLE ============ -->
+  <div class="coluna coluna--controle">
+
+    <section class="bloco" aria-labelledby="tt-aposta">
+      <h2 class="bloco__titulo" id="tt-aposta"><span class="passo">1</span> Aposta</h2>
+      <p class="bloco__resumo" id="resumoModalidade"></p>
+
+      <div class="campo" id="campoDezenas">
+        <div class="campo__topo">
+          <label class="campo__rotulo" for="inDezenas" id="rotDezenas">Dezenas por jogo</label>
+          <output class="campo__valor" id="outDezenas">6</output>
+        </div>
+        <input type="range" id="inDezenas" min="6" max="20" step="1" value="6">
+        <div class="campo__extremos"><span id="dezMin">6</span><span id="dezMax">20</span></div>
+      </div>
+
+      <div class="segmentado" id="segModo" role="group" aria-label="Como definir o tamanho do lote">
+        <button type="button" data-modo="qtd" class="is-ativa">Por quantidade</button>
+        <button type="button" data-modo="orcamento">Por orçamento</button>
+      </div>
+
+      <div class="campo" id="campoQtd">
+        <div class="campo__topo">
+          <label class="campo__rotulo" for="inQtd">Quantidade de jogos</label>
+          <output class="campo__valor" id="outQtd">10</output>
+        </div>
+        <input type="range" id="inQtd" min="1" max="500" step="1" value="10">
+        <div class="atalhos" id="atalhosQtd">
+          <button type="button" data-qtd="1">1</button>
+          <button type="button" data-qtd="5">5</button>
+          <button type="button" data-qtd="10">10</button>
+          <button type="button" data-qtd="25">25</button>
+          <button type="button" data-qtd="50">50</button>
+          <button type="button" data-qtd="100">100</button>
+        </div>
+      </div>
+
+      <div class="campo" id="campoOrcamento" hidden>
+        <div class="campo__topo">
+          <label class="campo__rotulo" for="inOrcamento">Quanto quero gastar</label>
+          <output class="campo__valor" id="outOrcamento">R$ 60</output>
+        </div>
+        <input type="number" id="inOrcamento" min="1" step="1" value="60" inputmode="decimal">
+        <div class="atalhos" id="atalhosOrcamento">
+          <button type="button" data-valor="20">20</button>
+          <button type="button" data-valor="50">50</button>
+          <button type="button" data-valor="100">100</button>
+          <button type="button" data-valor="250">250</button>
+          <button type="button" data-valor="500">500</button>
+          <button type="button" data-valor="1000">1k</button>
+        </div>
+        <div class="orcamento" id="orcamentoResumo"></div>
+      </div>
+
+      <div id="camposEspeciais"></div>
+    </section>
+
+    <section class="bloco" id="blocoVolante" aria-labelledby="tt-volante">
+      <h2 class="bloco__titulo" id="tt-volante"><span class="passo">2</span> Volante</h2>
+      <p class="bloco__resumo" id="ajudaVolante">
+        Clique numa dezena para <b>fixar</b>, de novo para <b>excluir</b>, de novo para limpar.
+      </p>
+      <div class="volante" id="volante" role="group" aria-label="Grade de dezenas"></div>
+      <div id="volanteExtra"></div>
+      <div class="legenda">
+        <span class="legenda__item"><i class="marca-fixa"></i> <span id="rotuloFixa">fixa em todo jogo</span></span>
+        <span class="legenda__item"><i class="marca-exclui"></i> fora do sorteio</span>
+        <span class="legenda__cont" id="contVolante"></span>
+      </div>
+      <div class="linha-acoes">
+        <button type="button" class="btn btn--fino" data-acao="limpar-volante">Limpar volante</button>
+        <button type="button" class="btn btn--fino" data-acao="sortear-fixas">Sortear marcações</button>
+      </div>
+    </section>
+
+    <section class="bloco" aria-labelledby="tt-estrategia">
+      <h2 class="bloco__titulo" id="tt-estrategia"><span class="passo">3</span> Estratégia</h2>
+      <div class="estrategias" id="listaEstrategias" role="radiogroup" aria-label="Estratégia de geração"></div>
+      <div id="opcoesEstrategia"></div>
+    </section>
+
+    <section class="bloco" id="blocoFiltros" aria-labelledby="tt-filtros">
+      <h2 class="bloco__titulo" id="tt-filtros">
+        <span class="passo">4</span> Filtros
+        <span class="selo selo--conta" id="contFiltros">0 ativos</span>
+      </h2>
+      <p class="bloco__resumo">Cada filtro descarta os jogos fora da faixa. As faixas já vêm no ponto estatisticamente mais provável.</p>
+      <div class="linha-acoes linha-acoes--topo">
+        <button type="button" class="btn btn--fino" data-acao="filtros-sugeridos">Aplicar sugeridos</button>
+        <button type="button" class="btn btn--fino" data-acao="filtros-limpar">Desligar todos</button>
+      </div>
+      <div class="filtros" id="listaFiltros"></div>
+
+      <div class="campo campo--linha">
+        <label class="alternador">
+          <input type="checkbox" id="inEvitarRepetidos" checked>
+          <span>Nunca repetir o mesmo jogo</span>
+        </label>
+      </div>
+      <div class="campo campo--linha">
+        <label class="alternador">
+          <input type="checkbox" id="inDiversidade">
+          <span>Limitar dezenas em comum entre jogos</span>
+        </label>
+        <div class="sub-campo" id="subDiversidade" hidden>
+          <label for="inDiversidadeMax">Máximo em comum</label>
+          <input type="number" id="inDiversidadeMax" min="1" max="19" value="4">
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ COLUNA DE SAÍDA ============ -->
+  <div class="coluna coluna--saida">
+
+    <div class="disparo" id="disparo">
+      <div class="disparo__resumo">
+        <div class="disparo__linha">
+          <span class="disparo__rotulo">Custo estimado</span>
+          <strong class="disparo__custo" id="custoPrevisto">R$ 0,00</strong>
+        </div>
+        <div class="disparo__detalhe" id="detalhePrevisto"></div>
+      </div>
+      <button type="button" class="btn btn--gerar" id="btnGerar">
+        <span>Gerar jogos</span>
+        <kbd>G</kbd>
+      </button>
+    </div>
+
+    <div class="semente">
+      <label for="inSemente">Semente</label>
+      <canvas class="impressao" id="impressaoSemente" aria-hidden="true" title="impressão digital desta semente"></canvas>
+      <input type="text" id="inSemente" placeholder="aleatória" autocomplete="off" spellcheck="false">
+      <button type="button" class="btn btn--fino" data-acao="nova-semente" title="Gerar uma nova semente">nova</button>
+      <button type="button" class="btn btn--fino" data-acao="abrir-semente">de uma foto, áudio, texto…</button>
+      <span class="semente__nota">a mesma semente refaz exatamente os mesmos jogos</span>
+    </div>
+
+    <div class="abas" role="tablist" aria-label="Painéis de resultado">
+      <button type="button" role="tab" class="aba is-ativa" data-aba="jogos" aria-selected="true">Jogos</button>
+      <button type="button" role="tab" class="aba" data-aba="cadeia" aria-selected="false">Cadeia</button>
+      <button type="button" role="tab" class="aba" data-aba="estatisticas" aria-selected="false">Estatísticas</button>
+      <button type="button" role="tab" class="aba" data-aba="conferidor" aria-selected="false">Conferidor</button>
+      <button type="button" role="tab" class="aba" data-aba="historico" aria-selected="false">Histórico</button>
+    </div>
+
+    <!-- JOGOS -->
+    <section class="painel is-ativo" id="painel-jogos" role="tabpanel">
+      <div class="painel__barra" id="barraJogos" hidden>
+        <div class="painel__info">
+          <strong id="infoQtd">0 jogos</strong>
+          <span id="infoCusto"></span>
+          <span class="selo selo--semente" id="infoSemente"></span>
+        </div>
+        <div class="painel__acoes">
+          <button type="button" class="btn btn--fino" data-exp="simples">Copiar</button>
+          <button type="button" class="btn btn--fino" data-exp="txt">TXT</button>
+          <button type="button" class="btn btn--fino" data-exp="csv">CSV</button>
+          <button type="button" class="btn btn--fino" data-exp="json">JSON</button>
+          <button type="button" class="btn btn--fino" data-acao="imprimir">Imprimir</button>
+          <button type="button" class="btn btn--fino btn--perigo" data-acao="limpar-jogos">Descartar</button>
+        </div>
+      </div>
+      <div id="avisos"></div>
+      <div class="jogos" id="listaJogos"></div>
+      <div class="vazio" id="vazioJogos">
+        <div class="vazio__glifo" aria-hidden="true"></div>
+        <p class="vazio__titulo">Nenhum jogo ainda</p>
+        <p class="vazio__texto">Escolha a modalidade, ajuste a aposta e aperte <b>Gerar jogos</b>. Nada sai daqui: tudo roda no seu navegador.</p>
+      </div>
+    </section>
+
+    <!-- CADEIA -->
+    <section class="painel" id="painel-cadeia" role="tabpanel" hidden>
+      <div class="forja">
+
+        <div class="forja__cabeca">
+          <div class="forja__intro">
+            <h3 class="cartao__titulo">Forja de elos</h3>
+            <p class="cartao__texto">
+              Cada volta é uma <i>quarter-round</i> no estilo ChaCha sobre 128 bits de estado.
+              O digest <b>nunca vira dezena</b>: ele é projetado em quatro parâmetros que deformam a curva de
+              probabilidade — e só dessa curva as dezenas são sorteadas. Cada jogo forjado é reabsorvido
+              pelo estado, então o elo seguinte nasce do anterior.
+            </p>
+          </div>
+          <div class="forja__estado">
+            <span class="forja__rot">estado</span>
+            <code class="forja__hex" id="forjaHex">—</code>
+          </div>
+        </div>
+
+        <div class="forja__medidores">
+          <div class="medidor">
+            <span class="medidor__rot">Voltas</span>
+            <strong class="medidor__val" id="medVoltas">0</strong>
+          </div>
+          <div class="medidor">
+            <span class="medidor__rot">Bits virados</span>
+            <strong class="medidor__val" id="medVirados">0<span class="medidor__de">/128</span></strong>
+          </div>
+          <div class="medidor" id="medidorAvalanche">
+            <span class="medidor__rot">Avalanche média</span>
+            <strong class="medidor__val" id="medAval">0,0</strong>
+            <span class="medidor__sub">ideal 64,0</span>
+          </div>
+          <div class="medidor">
+            <span class="medidor__rot">Elos forjados</span>
+            <strong class="medidor__val" id="medElos">0</strong>
+          </div>
+        </div>
+
+        <div class="viz">
+          <div class="viz__rot">Mapa de bits <span class="viz__nota">os quatro registradores; as células destacadas viraram na última volta</span></div>
+          <canvas id="cvBits" class="viz__tela" height="176" aria-label="Grade dos 128 bits do estado"></canvas>
+        </div>
+
+        <div class="viz">
+          <div class="viz__rot">Avalanche <span class="viz__nota">bits alterados a cada volta — a faixa clara é a zona de boa mistura</span></div>
+          <canvas id="cvAval" class="viz__tela" height="96" aria-label="Histórico de bits alterados por volta"></canvas>
+        </div>
+
+        <div class="viz">
+          <div class="viz__rot">Curva de probabilidade <span class="viz__nota" id="vizCurvaNota"></span></div>
+          <canvas id="cvDist" class="viz__tela" height="160" aria-label="Distribuição de probabilidade das dezenas"></canvas>
+          <div class="forja__params" id="forjaParams"></div>
+        </div>
+
+        <div class="forja__controles">
+          <div class="campo">
+            <div class="campo__topo">
+              <label class="campo__rotulo" for="inTemperatura">Temperatura</label>
+              <output class="campo__valor" id="outTemperatura">0,60</output>
+            </div>
+            <input type="range" id="inTemperatura" min="0" max="1" step="0.02" value="0.6">
+            <div class="vies-escala"><span>uniforme</span><span>moldada pela cadeia</span></div>
+          </div>
+          <div class="campo">
+            <div class="campo__topo">
+              <label class="campo__rotulo" for="inRodadas">Voltas por elo</label>
+              <output class="campo__valor" id="outRodadas">12</output>
+            </div>
+            <input type="range" id="inRodadas" min="1" max="64" step="1" value="12">
+            <div class="vies-escala"><span>1</span><span>64</span></div>
+          </div>
+          <div class="campo">
+            <div class="campo__topo">
+              <label class="campo__rotulo" for="inDeriva">Deriva entre elos</label>
+              <output class="campo__valor" id="outDeriva">3</output>
+            </div>
+            <input type="range" id="inDeriva" min="0" max="32" step="1" value="3">
+            <div class="vies-escala"><span>elos colados</span><span>elos distantes</span></div>
+          </div>
+        </div>
+
+        <div class="forja__botoes">
+          <button type="button" class="btn btn--principal" data-acao="forja-rodar" id="btnForjaRodar">▶ Rodar cadeia</button>
+          <button type="button" class="btn" data-acao="forja-passo">⏭ Uma volta</button>
+          <button type="button" class="btn" data-acao="forja-extrair">⚡ Forjar elo</button>
+          <button type="button" class="btn btn--fantasma" data-acao="forja-reiniciar">↺ Reiniciar</button>
+          <button type="button" class="btn btn--fantasma" data-acao="forja-usar">Usar na geração</button>
+        </div>
+
+        <div class="elos" id="forjaElos"></div>
+      </div>
+    </section>
+
+    <!-- ESTATÍSTICAS -->
+    <section class="painel" id="painel-estatisticas" role="tabpanel" hidden>
+      <div id="conteudoEstatisticas">
+        <div class="vazio"><p class="vazio__texto">Gere alguns jogos para ver a distribuição das dezenas, das somas e do equilíbrio par/ímpar.</p></div>
+      </div>
+    </section>
+
+    <!-- CONFERIDOR -->
+    <section class="painel" id="painel-conferidor" role="tabpanel" hidden>
+      <div class="cartao">
+        <h3 class="cartao__titulo">Resultado do concurso</h3>
+        <p class="cartao__texto" id="ajudaConferidor">Cole ou digite as dezenas sorteadas, separadas por espaço, vírgula ou traço.</p>
+        <div id="entradaResultado"></div>
+        <div class="linha-acoes">
+          <button type="button" class="btn btn--principal" data-acao="conferir">Conferir jogos</button>
+          <button type="button" class="btn btn--fino" data-acao="limpar-conferencia">Limpar</button>
+        </div>
+      </div>
+      <div id="resultadoConferencia"></div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section class="painel" id="painel-historico" role="tabpanel" hidden>
+      <div class="cartao">
+        <h3 class="cartao__titulo">Histórico de concursos</h3>
+        <p class="cartao__texto">
+          Cole os resultados anteriores — <b>uma linha por concurso</b>, do mais recente para o mais antigo.
+          O número do concurso na frente da linha é ignorado. Com o histórico carregado ficam disponíveis a
+          estratégia ponderada e o filtro de dezenas repetidas.
+        </p>
+        <textarea id="inHistorico" rows="8" spellcheck="false"
+          placeholder="2755 04 12 23 38 44 57&#10;2754 01 09 17 26 31 49&#10;..."></textarea>
+        <div class="linha-acoes">
+          <button type="button" class="btn btn--principal" data-acao="carregar-historico">Carregar histórico</button>
+          <button type="button" class="btn btn--fino" data-acao="limpar-historico">Descartar</button>
+        </div>
+      </div>
+      <div id="resumoHistorico"></div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="rodape">
+  <p>
+    <b>Lotocalc</b> roda inteiramente no seu navegador — nenhum dado sai do dispositivo.
+    Preços e faixas de premiação são valores de referência: confira sempre em
+    <span class="rodape__link">loterias.caixa.gov.br</span>.
+  </p>
+  <p class="rodape__aviso">
+    Loteria é sorteio. Nenhuma estratégia, filtro ou fechamento altera a probabilidade de um número ser sorteado —
+    eles servem para organizar apostas, não para prevê-las. Jogue com responsabilidade.
+  </p>
+</footer>
+
+<!-- ============ SOBREPOSIÇÕES ============ -->
+<div class="modal" id="modal" hidden>
+  <div class="modal__fundo" data-acao="fechar-modal"></div>
+  <div class="modal__caixa" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
+    <div class="modal__cabeca">
+      <h2 id="modalTitulo">Título</h2>
+      <button type="button" class="btn btn--icone" data-acao="fechar-modal" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal__corpo" id="modalCorpo"></div>
+    <div class="modal__pe" id="modalPe"></div>
+  </div>
+</div>
+
+<div class="avisos-flutuantes" id="toasts" aria-live="polite"></div>
+
+<script src="assets/js/loterias.js"></script>
+<script src="assets/js/rng.js"></script>
+<script src="assets/js/filtros.js"></script>
+<script src="assets/js/cadeia.js"></script>
+<script src="assets/js/semente.js"></script>
+<script src="assets/js/gerador.js"></script>
+<script src="assets/js/analise.js"></script>
+<script src="assets/js/exportar.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
