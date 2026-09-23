@@ -1215,6 +1215,79 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand); outline:
 .rosca-item i { width: 11px; height: 11px; border-radius: 3px; flex: none; }
 .rosca-item b { font-family: var(--f-mono); margin-left: auto; font-variant-numeric: tabular-nums; }
 
+/* ---------- prêmios e valor esperado ------------------------------------- */
+.abas { overflow-x: auto; scrollbar-width: none; }
+.abas::-webkit-scrollbar { display: none; }
+.aba { flex: none; }
+
+.busca-oficial {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.busca-oficial input[type="number"] { width: 110px; }
+.busca-oficial select { width: auto; }
+
+#conteudoPremios .metricas-grade { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+#conteudoPremios .metrica { min-width: 0; }
+#conteudoPremios .metrica__val { font-size: 17px; overflow-wrap: anywhere; }
+
+.cartao__topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.cartao__rodape {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--ink-3);
+}
+.cartao--destaque { border-color: rgb(var(--brand-rgb) / .45); background: linear-gradient(rgb(var(--brand-rgb) / .06), rgb(var(--brand-rgb) / .06)), var(--surface); }
+
+.selo--ok { background: var(--ok-fundo); color: var(--ok); border-color: transparent; }
+.selo--alerta { background: var(--alerta-fundo); color: var(--alerta); border-color: transparent; }
+
+.res-numeros { display: grid; gap: 8px; }
+.res-numeros__linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.res-numeros__rot {
+  font-family: var(--f-display); font-variation-settings: 'wdth' 92, 'wght' 600;
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  min-width: 70px;
+}
+.res-partidas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
+.res-partidas__item b { font-family: var(--f-mono); color: var(--brand-texto); }
+
+.tabela td.num { font-family: var(--f-mono); font-size: 11.5px; white-space: nowrap; }
+.tabela .fraco, .tabela tr.fraco td { color: var(--ink-3); }
+.tabela__total td { border-bottom: none; font-weight: 700; }
+.tabela__total td.num:last-child { color: var(--brand-texto); }
+
+.ev-ajustes {
+  display: grid; gap: 8px;
+  padding: 12px; border-radius: var(--r-medio);
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.ev-ajustes__linha { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+input.ev-input, select.ev-input { width: 150px; padding: 5px 8px; font-family: var(--f-mono); font-size: 12px; background: var(--surface); }
+select.ev-input { width: auto; font-family: var(--f-corpo); }
+input.ev-input--premio { width: 128px; text-align: right; background: var(--surface-2); }
+.ev-nota { display: block; font-size: 9.5px; color: var(--ink-3); font-family: var(--f-corpo); }
+
+.ev-barra { display: grid; gap: 7px; }
+.ev-barra__rot {
+  font-family: var(--f-display); font-variation-settings: 'wdth' 92, 'wght' 600;
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  order: -1;
+}
+.ev-barra__trilho {
+  display: flex; height: 22px; border-radius: var(--r-pequeno); overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface-3) 6px 12px);
+  border: 1px solid var(--line);
+}
+.ev-barra__seg {
+  height: 100%; background: rgb(var(--brand-rgb) / var(--a, 1));
+  border-right: 1px solid var(--surface);
+  transform-origin: left; animation: barra .5s cubic-bezier(.2, .8, .3, 1) backwards;
+}
+.ev-barra__legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--ink-2); }
+.ev-barra__item { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.ev-barra__item i { width: 10px; height: 10px; border-radius: 3px; background: rgb(var(--brand-rgb) / var(--a, 1)); flex: none; }
+.ev-barra__item--resto { color: var(--ink-3); }
+.ev-barra__item--resto i { background: repeating-linear-gradient(135deg, var(--surface-2) 0 3px, var(--line-forte) 3px 5px); }
+
 /* ---------- movimento reduzido ------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

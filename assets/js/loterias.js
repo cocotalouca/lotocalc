@@ -234,17 +234,15 @@
       preco: 6.00, precoModo: 'milionaria',
       faixas: [
         { n: 6, t: 2, nome: '6 + 2 trevos' },
-        { n: 6, t: 1, nome: '6 + 1 trevo' },
-        { n: 6, t: 0, nome: '6 acertos' },
+        { n: 6, t: 0, nome: '6 + 1 ou nenhum trevo' },
         { n: 5, t: 2, nome: '5 + 2 trevos' },
-        { n: 5, t: 1, nome: '5 + 1 trevo' },
-        { n: 5, t: 0, nome: '5 acertos' },
+        { n: 5, t: 0, nome: '5 + 1 ou nenhum trevo' },
         { n: 4, t: 2, nome: '4 + 2 trevos' },
-        { n: 4, t: 1, nome: '4 + 1 trevo' },
-        { n: 4, t: 0, nome: '4 acertos' },
+        { n: 4, t: 0, nome: '4 + 1 ou nenhum trevo' },
         { n: 3, t: 2, nome: '3 + 2 trevos' },
         { n: 3, t: 1, nome: '3 + 1 trevo' },
-        { n: 2, t: 2, nome: '2 + 2 trevos' }
+        { n: 2, t: 2, nome: '2 + 2 trevos' },
+        { n: 2, t: 1, nome: '2 + 1 trevo' }
       ],
       extra: {
         id: 'trevos', nome: 'Trevos', tipo: 'dezenas',

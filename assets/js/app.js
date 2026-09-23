@@ -49,12 +49,18 @@
     diversidadeMax: 4,
     semente: '',
     historicoTexto: {},   // por modalidade
+    premios: { amostra: 20, dividir: true, ir: true, limiteIR: 2428.80 },
     tema: null
   };
 
   var resultado = null;      // último lote gerado
   var historico = [];        // concursos lidos, da modalidade atual
   var conferencia = null;
+  var abaAtual = 'jogos';
+
+  var oficial = {};          // por modalidade: { ultimo, amostra, carregando, progresso, erro }
+  var ajustesEV = { manual: {}, principal: null, apostas: null };   // valores digitados na aba Prêmios
+  var oficialConferido = null;   // concurso buscado no conferidor (traz o rateio)
 
   function salvar() {
     try {
@@ -67,9 +73,11 @@
       var bruto = localStorage.getItem(CHAVE);
       if (!bruto) return;
       var lido = JSON.parse(bruto);
+      var padraoPremios = estado.premios;
       Object.keys(lido).forEach(function (k) {
         if (k in estado) estado[k] = lido[k];
       });
+      estado.premios = Object.assign({}, padraoPremios, estado.premios || {});
     } catch (e) { /* dado corrompido — ignora */ }
   }
 
@@ -271,6 +279,9 @@
     renderEntradaResultado();
     renderResumoHistorico();
     $('#inHistorico').value = estado.historicoTexto[l.id] || '';
+    $('#baixarHistorico').hidden = l.tipo !== 'dezenas';
+    ajustesEV = { manual: {}, principal: null, apostas: null };
+    if (abaAtual === 'premios') abrirPremios();
     forja.reiniciar();
     aplicarModoLote();
     atualizarCusto();
@@ -1064,6 +1075,7 @@
     }
     if (l.tipo === 'placares') partes.push('estimativa: duplos e triplos multiplicam o bilhete');
     $('#detalhePrevisto').textContent = partes.join('  ·  ');
+    if (abaAtual === 'premios' && oficial[l.id] && oficial[l.id].ultimo) renderPremios();
 
     if (estado.estrategia === 'fechamento') renderOpcoesEstrategia();
     renderOrcamento();
@@ -1241,7 +1253,8 @@
     if (j.relaxado) c.classList.add('is-relaxado');
 
     var conf = conferencia && conferencia.linhas[i];
-    if (conf && conf.faixa) c.classList.add('is-premiado');
+    var valorPremio = conf && conf.premio ? conf.premio.total : 0;
+    if (conf && (conf.faixa || valorPremio > 0)) c.classList.add('is-premiado');
 
     c.appendChild(el('div', 'cupom__n', String(j.n).padStart(3, '0')));
     var corpo = el('div', 'cupom__corpo');
@@ -1307,9 +1320,12 @@
       pe.appendChild(e);
     }
     if (conf) {
-      var texto = conf.faixa ? conf.faixa.nome : conf.acertos + ' acerto' + (conf.acertos === 1 ? '' : 's');
+      var texto = conf.faixa ? conf.faixa.nome
+        : valorPremio > 0 ? conf.premio.itens[0].nome
+        : conf.acertos + ' acerto' + (conf.acertos === 1 ? '' : 's');
+      if (valorPremio > 0) texto += ' · ' + LC.moeda(valorPremio);
       var fp = el('span', 'faixa-premio', texto);
-      if (!conf.faixa) { fp.style.background = 'var(--surface-2)'; fp.style.color = 'var(--ink-3)'; }
+      if (!conf.faixa && !(valorPremio > 0)) { fp.style.background = 'var(--surface-2)'; fp.style.color = 'var(--ink-3)'; }
       pe.appendChild(fp);
     }
     pe.appendChild(el('span', 'cupom__custo', LC.moeda(j.custo)));
@@ -1574,6 +1590,10 @@
         'ex.: ' + exemploDezenas(l)));
       $('#ajudaConferidor').textContent = 'Cole ou digite as ' + l.sorteadas +
         ' dezenas sorteadas, separadas por espaço, vírgula ou traço.';
+      if (l.sorteios === 2) {
+        caixa.appendChild(campoTexto('Dezenas do 2º sorteio', 'resDezenas2',
+          'opcional · ex.: ' + exemploDezenas(l)));
+      }
       if (l.extra && l.extra.tipo === 'dezenas') {
         caixa.appendChild(campoTexto('Trevos sorteados', 'resTrevos', 'ex.: 2 5'));
       }
@@ -1594,6 +1614,8 @@
     }
 
     alvo.appendChild(caixa);
+    oficialConferido = null;
+    limpar($('#notaOficial'));
   }
 
   function exemploDezenas(l) {
@@ -1651,6 +1673,11 @@
       if (res.dezenas.length !== l.sorteadas) {
         toast('Você informou ' + res.dezenas.length + ' dezenas; o ' + l.nome + ' sorteia ' + l.sorteadas + '.', 'alerta');
       }
+      if ($('#resDezenas2')) {
+        var d2 = LC.numerosDoTexto($('#resDezenas2').value || '')
+          .filter(function (n) { return n >= l.min && n <= l.max; });
+        if (d2.length) res.dezenas2 = d2;
+      }
       if ($('#resTrevos')) {
         res.trevos = LC.numerosDoTexto($('#resTrevos').value || '');
       }
@@ -1659,6 +1686,7 @@
 
     conferencia = LC.conferir(l, resultado.jogos, res);
     conferencia.resultado = res;
+    aplicarRateio(l, res);
     renderConferencia(l);
     renderJogos();
     toast('Conferência pronta: ' + conferencia.premiados + ' ' +
@@ -1679,7 +1707,18 @@
     grade.appendChild(metrica('Premiados', conferencia.premiados,
       conferencia.premiados ? 'dentro de alguma faixa' : 'nenhuma faixa atingida'));
     grade.appendChild(metrica('Melhor jogo', conferencia.melhor + ' acertos'));
+    if (conferencia.totalPremios != null) {
+      grade.appendChild(metrica('Prêmios', LC.moeda(conferencia.totalPremios), 'valor bruto, antes do IR'));
+      var saldo = conferencia.totalPremios - conferencia.custoLote;
+      grade.appendChild(metrica('Saldo do lote', (saldo >= 0 ? '+' : '−') + LC.moeda(Math.abs(saldo)),
+        'prêmios menos ' + LC.moeda(conferencia.custoLote) + ' de custo'));
+    }
     cartao.appendChild(grade);
+    if (conferencia.oficial) {
+      cartao.appendChild(el('div', 'cartao__texto',
+        'Rateio oficial do concurso ' + conferencia.oficial.concurso + ' (' + conferencia.oficial.data + '). ' +
+        'Apostas com mais dezenas recebem por todas as apostas simples que contêm.'));
+    }
 
     var nomes = Object.keys(conferencia.porFaixa);
     if (nomes.length) {
@@ -1701,8 +1740,39 @@
       var rolagem = el('div', 'tabela-rolagem');
       rolagem.appendChild(tab);
       cartao.appendChild(rolagem);
-    } else {
+    } else if (!conferencia.totalPremios) {
       cartao.appendChild(el('div', 'nota', 'Nenhum jogo atingiu faixa de premiação neste concurso.'));
+    }
+
+    var itens = {};
+    conferencia.linhas.forEach(function (linha) {
+      ((linha.premio && linha.premio.itens) || []).forEach(function (it) {
+        var a = itens[it.nome] || (itens[it.nome] = { qtd: 0, unitario: it.unitario, valor: 0 });
+        a.qtd += it.qtd;
+        a.valor += it.valor;
+      });
+    });
+    var nomesPremio = Object.keys(itens);
+    if (nomesPremio.length) {
+      var tabP = el('table', 'tabela');
+      var thP = el('tr');
+      ['Prêmio', 'Apostas simples', 'Valor unitário', 'Total'].forEach(function (t) { thP.appendChild(el('th', null, t)); });
+      var theadP = el('thead');
+      theadP.appendChild(thP);
+      tabP.appendChild(theadP);
+      var tbP = el('tbody');
+      nomesPremio.forEach(function (n) {
+        var trP = el('tr');
+        trP.appendChild(el('td', null, n));
+        trP.appendChild(el('td', 'num', String(itens[n].qtd)));
+        trP.appendChild(el('td', 'num', itens[n].unitario ? LC.moeda(itens[n].unitario) : 'acumulou — sem rateio'));
+        trP.appendChild(el('td', 'num', LC.moeda(itens[n].valor)));
+        tbP.appendChild(trP);
+      });
+      tabP.appendChild(tbP);
+      var rolP = el('div', 'tabela-rolagem');
+      rolP.appendChild(tabP);
+      cartao.appendChild(rolP);
     }
 
     if (conferencia.resultado.dezenas) {
@@ -1717,6 +1787,645 @@
     }
 
     alvo.appendChild(cartao);
+  }
+
+  /* ---- resultado oficial no conferidor ----------------------------------- */
+
+  /** Com o rateio do concurso, calcula quanto cada jogo recebe em reais. */
+  function aplicarRateio(l, res) {
+    if (!oficialConferido || oficialConferido.lotId !== l.id) return;
+    var comRateio = Object.assign({}, res, { rateio: oficialConferido.rateio });
+    var total = 0, premiados = 0, algum = false;
+    conferencia.linhas.forEach(function (linha) {
+      linha.premio = LC.valor.premioDoJogo(l, linha.jogo, comRateio);
+      if (linha.premio) {
+        algum = true;
+        total += linha.premio.total;
+      }
+      if (linha.faixa || (linha.premio && linha.premio.total > 0)) premiados++;
+    });
+    if (!algum) return;
+    conferencia.premiados = premiados;
+    conferencia.totalPremios = total;
+    conferencia.custoLote = resultado.custo;
+    conferencia.oficial = { concurso: oficialConferido.concurso, data: oficialConferido.data };
+  }
+
+  function buscarResultadoOficial() {
+    var l = lot();
+    var numero = parseInt(($('#inConcurso') || {}).value, 10) || null;
+    var btn = $('#btnBuscarResultado');
+    btn.disabled = true;
+    btn.textContent = 'Buscando…';
+
+    LC.resultados.buscarConcurso(l, numero).then(function (r) {
+      if (estado.lotId !== l.id) return;
+      preencherResultado(l, r);
+      oficialConferido = r;
+      var nota = $('#notaOficial');
+      limpar(nota);
+      var texto = 'Concurso ' + r.concurso + ' · ' + r.data + ' — ' + fonteTexto(r) + '. ';
+      texto += l.tipo === 'bilhete'
+        ? 'O conferidor compara seus palpites com o 1º prêmio; os cinco bilhetes premiados estão abaixo.'
+        : 'Com o rateio oficial, a conferência mostra quanto cada jogo recebe.';
+      nota.appendChild(el('div', 'nota nota--ok', texto));
+      if (l.tipo === 'bilhete' && r.bilhetes) {
+        var lista = el('div', 'lista-dezenas');
+        r.bilhetes.forEach(function (b, i) {
+          var p = el('span', 'pill');
+          p.appendChild(document.createTextNode((i + 1) + 'º '));
+          p.appendChild(el('b', null, b));
+          lista.appendChild(p);
+        });
+        nota.appendChild(lista);
+      }
+      if (resultado && resultado.jogos.length && resultado.lotId === l.id) conferir();
+      else toast('Resultado do concurso ' + r.concurso + ' carregado.', 'ok');
+    }, function () {
+      toast('Não consegui buscar o resultado' + (numero ? ' do concurso ' + numero : '') +
+        '. Confira a conexão ou digite o resultado à mão.', 'erro');
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = 'Buscar resultado oficial';
+    });
+  }
+
+  function preencherResultado(l, r) {
+    var alvo = $('#entradaResultado');
+    if (l.tipo === 'bilhete') {
+      $('#resBilhete').value = (r.bilhetes || [])[0] || '';
+    } else if (l.tipo === 'colunas') {
+      $('#resColunas').value = (r.colunas || []).join(' ');
+    } else if (l.tipo === 'placares') {
+      $$('.dez', alvo).forEach(function (b) { b.classList.remove('is-fixa'); });
+      (r.placares || []).forEach(function (s, i) {
+        var b = s && $('[data-jogo="' + i + '"][data-simbolo="' + s + '"]', alvo);
+        if (b) b.classList.add('is-fixa');
+      });
+    } else {
+      $('#resDezenas').value = (r.dezenas || []).map(function (n) { return LC.fmt(l, n); }).join(' ');
+      if ($('#resDezenas2')) $('#resDezenas2').value = (r.dezenas2 || []).map(function (n) { return LC.fmt(l, n); }).join(' ');
+      if ($('#resTrevos')) $('#resTrevos').value = (r.trevos || []).join(' ');
+      if ($('#resExtra')) {
+        var sel = $('#resExtra');
+        sel.value = r.extra || '';
+        if (sel.value !== (r.extra || '')) sel.selectedIndex = 0;
+      }
+    }
+  }
+
+  /** Se a pessoa mexe no resultado depois de buscar, o rateio deixa de valer. */
+  function invalidarOficial() {
+    if (!oficialConferido) return;
+    oficialConferido = null;
+    limpar($('#notaOficial'));
+    $('#notaOficial').appendChild(el('div', 'nota nota--alerta',
+      'Resultado editado à mão: a conferência volta a mostrar só as faixas, sem valores.'));
+  }
+
+  function fonteTexto(r) {
+    if (r.fonte === 'cache') {
+      if (!r.cacheEm) return 'guardado neste navegador';
+      return (r.offline ? 'sem conexão — ' : '') + 'consultado às ' +
+        new Date(r.cacheEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+    return 'fonte: ' + LC.resultados.nomeFonte(r.fonte);
+  }
+
+  /* ======================================================================
+     PRÊMIOS — concurso atual e valor esperado
+     ==================================================================== */
+
+  function fmtChance(p) {
+    if (!p) return '—';
+    var inv = 1 / p;
+    return '1 em ' + inv.toLocaleString('pt-BR', { maximumFractionDigits: inv < 10 ? 1 : 0 });
+  }
+
+  function fmtPct(x) {
+    return (x * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  }
+
+  function fmtInteiro(x) {
+    return Math.round(x).toLocaleString('pt-BR');
+  }
+
+  /** Moeda sem centavos a partir de mil reais — para os cartões de destaque. */
+  function reais(v) {
+    return v >= 1000 ? 'R$ ' + fmtInteiro(v) : LC.moeda(v);
+  }
+
+  /** "38.000.000", "1.234,56" ou "1234.56" → número. Vazio → null. */
+  function lerValorBR(txt) {
+    txt = String(txt || '').replace(/[R$\s]/g, '');
+    if (!txt) return null;
+    if (txt.indexOf(',') !== -1) txt = txt.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(txt)) txt = txt.replace(/\./g, '');
+    var n = parseFloat(txt);
+    return isNaN(n) || n < 0 ? null : n;
+  }
+
+  function abrirPremios() {
+    var l = lot();
+    var o = oficial[l.id];
+    var alvo = LC.valor.suporta(l) ? estado.premios.amostra : 1;
+    if (!o || (!o.carregando && (!o.ultimo || o.n < alvo))) carregarOficial(false);
+    else renderPremios();
+  }
+
+  function carregarOficial(forcar) {
+    var l = lot();
+    var o = oficial[l.id] || (oficial[l.id] = {});
+    if (o.carregando) return;
+    var n = LC.valor.suporta(l) ? estado.premios.amostra : 1;
+    o.carregando = true;
+    o.erro = null;
+    renderPremios();
+
+    LC.resultados.buscarRecentes(l, n, function (feitos, total) {
+      var p = $('#progPremios');
+      if (p) p.textContent = 'Buscando concursos… ' + feitos + ' de ' + total;
+    }, { forcar: forcar }).then(function (lista) {
+      o.ultimo = lista.ultimo;
+      o.amostra = lista;
+      o.n = n;
+      o.falhas = lista.falhas;
+    }, function () {
+      o.erro = 'Não consegui falar com a CAIXA nem com o espelho comunitário. Verifique a conexão e tente de novo.';
+    }).then(function () {
+      o.carregando = false;
+      if (estado.lotId === l.id && abaAtual === 'premios') renderPremios();
+    });
+  }
+
+  function renderPremios() {
+    var alvo = $('#conteudoPremios');
+    if (!alvo) return;
+    limpar(alvo);
+    var l = lot();
+    var o = oficial[l.id] || {};
+
+    if (!o.ultimo) {
+      var c = el('div', 'cartao');
+      c.appendChild(el('h3', 'cartao__titulo', 'Prêmios da ' + l.nome));
+      if (o.erro) {
+        c.appendChild(el('div', 'nota nota--erro', o.erro));
+        var b = el('button', 'btn btn--principal', 'Tentar de novo');
+        b.type = 'button';
+        b.dataset.acao = 'atualizar-premios';
+        c.appendChild(b);
+      } else {
+        var p = el('p', 'cartao__texto', 'Buscando concursos…');
+        p.id = 'progPremios';
+        c.appendChild(p);
+      }
+      alvo.appendChild(c);
+      return;
+    }
+
+    var u = o.ultimo;
+    alvo.appendChild(cartaoUltimo(l, u, o));
+    if (u.proximo && u.proximo.estimativa) alvo.appendChild(cartaoProximo(l, u));
+
+    if (!LC.valor.suporta(l)) {
+      alvo.appendChild(el('div', 'nota',
+        l.tipo === 'placares'
+          ? 'Valor esperado não se aplica à Loteca: as chances dependem de partidas reais, não de um sorteio equiprovável. O conferidor já calcula quanto cada aposta recebe com o rateio oficial.'
+          : 'Valor esperado não se aplica à Loteria Federal: os bilhetes são vendidos em frações, com prêmios fixos por extração e sem rateio entre apostadores.'));
+      return;
+    }
+
+    var ev = LC.valor.valorEsperado(l, {
+      ultimo: u,
+      amostra: o.amostra,
+      dividir: estado.premios.dividir,
+      ir: estado.premios.ir,
+      limiteIR: estado.premios.limiteIR,
+      apostas: ajustesEV.apostas,
+      principal: ajustesEV.principal,
+      manual: ajustesEV.manual
+    });
+    alvo.appendChild(cartaoValorEsperado(l, ev, o));
+    var lote = cartaoLote(l, ev);
+    if (lote) alvo.appendChild(lote);
+    alvo.appendChild(cartaoRecentes(o.amostra));
+  }
+
+  function numerosDoConcurso(l, u) {
+    var caixa = el('div', 'res-numeros');
+    function linha(rot, itens) {
+      if (!itens || !itens.length) return;
+      var w = el('div', 'res-numeros__linha');
+      if (rot) w.appendChild(el('span', 'res-numeros__rot', rot));
+      var bolas = el('div', 'bolas');
+      itens.forEach(function (t, i) {
+        var b = el('div', 'bola', t);
+        b.style.setProperty('--j', Math.min(i, 24));
+        bolas.appendChild(b);
+      });
+      w.appendChild(bolas);
+      caixa.appendChild(w);
+    }
+    var fmt = function (n) { return LC.fmt(l, n); };
+
+    if (l.tipo === 'colunas') {
+      linha(null, (u.colunas || []).map(String));
+    } else if (l.tipo === 'placares') {
+      var lista = el('div', 'res-partidas');
+      (u.partidas || []).forEach(function (p, i) {
+        var li = el('div', 'res-partidas__item');
+        li.appendChild(el('b', null, String(i + 1).padStart(2, '0') + ' · ' + (u.placares[i] || '?')));
+        li.appendChild(document.createTextNode(' ' + p));
+        lista.appendChild(li);
+      });
+      caixa.appendChild(lista);
+    } else if (l.tipo === 'bilhete') {
+      var bl = el('div', 'lista-dezenas');
+      (u.bilhetes || []).forEach(function (b, i) {
+        var p = el('span', 'pill');
+        p.appendChild(document.createTextNode((i + 1) + 'º prêmio '));
+        p.appendChild(el('b', null, b));
+        bl.appendChild(p);
+      });
+      caixa.appendChild(bl);
+    } else {
+      linha(u.dezenas2 ? '1º sorteio' : null, (u.dezenas || []).map(fmt));
+      linha('2º sorteio', (u.dezenas2 || []).map(fmt));
+      linha('trevos', (u.trevos || []).map(String));
+      if (u.extra) {
+        var ex = el('div', 'res-numeros__linha');
+        ex.appendChild(el('span', 'res-numeros__rot', l.extra.nome));
+        ex.appendChild(el('span', 'cupom__extra', u.extra));
+        caixa.appendChild(ex);
+      }
+    }
+    return caixa;
+  }
+
+  function cartaoUltimo(l, u, o) {
+    var c = el('div', 'cartao');
+    var topo = el('div', 'cartao__topo');
+    topo.appendChild(el('h3', 'cartao__titulo', 'Concurso ' + u.concurso + ' · ' + u.data));
+    if (l.tipo !== 'bilhete') {
+      topo.appendChild(el('span', 'selo ' + (u.acumulou ? 'selo--alerta' : 'selo--ok'),
+        u.acumulou ? 'acumulou' : 'saiu o prêmio principal'));
+    }
+    c.appendChild(topo);
+    c.appendChild(numerosDoConcurso(l, u));
+
+    var probs = LC.valor.suporta(l) ? LC.valor.probSimples(l) : null;
+    var apostas = probs && u.arrecadado ? u.arrecadado / l.preco : 0;
+
+    var tab = el('table', 'tabela');
+    var th = el('tr');
+    ['Faixa', 'Ganhadores', 'Prêmio'].forEach(function (t) { th.appendChild(el('th', null, t)); });
+    if (apostas) {
+      var thE = el('th', null, 'Esperados');
+      thE.title = 'Ganhadores que a matemática prevê para a arrecadação deste concurso — um jeito de conferir as chances.';
+      th.appendChild(thE);
+    }
+    var thead = el('thead');
+    thead.appendChild(th);
+    tab.appendChild(thead);
+    var tb = el('tbody');
+    // nomes do app quando casam com o rateio (a API repete "6 acertos" nos dois sorteios da Dupla)
+    var est = LC.valor.estrutura(l);
+    var nomes = est.length === (u.rateio || []).length ? est.map(function (f) { return f.nome; }) : [];
+    (u.rateio || []).forEach(function (r, i) {
+      var tr = el('tr');
+      tr.appendChild(el('td', null, nomes[i] || r.descricao));
+      tr.appendChild(el('td', 'num', fmtInteiro(r.ganhadores)));
+      tr.appendChild(el('td', 'num', r.ganhadores ? LC.moeda(r.valor) : '—'));
+      if (apostas) tr.appendChild(el('td', 'num fraco', probs[i] != null ? fmtInteiro(apostas * probs[i]) : ''));
+      tb.appendChild(tr);
+    });
+    tab.appendChild(tb);
+    var rol = el('div', 'tabela-rolagem');
+    rol.appendChild(tab);
+    c.appendChild(rol);
+
+    var rodape = el('div', 'cartao__rodape');
+    var info = fonteTexto(u);
+    if (u.arrecadado) info += ' · arrecadação ' + LC.moeda(u.arrecadado);
+    if (o.falhas) info += ' · ' + o.falhas + ' concursos da amostra não responderam';
+    rodape.appendChild(el('span', null, info));
+    var b = el('button', 'btn btn--fino', o.carregando ? 'Atualizando…' : 'Atualizar');
+    b.type = 'button';
+    b.dataset.acao = 'atualizar-premios';
+    b.disabled = !!o.carregando;
+    rodape.appendChild(b);
+    c.appendChild(rodape);
+    return c;
+  }
+
+  function cartaoProximo(l, u) {
+    var c = el('div', 'cartao cartao--destaque');
+    c.appendChild(el('h3', 'cartao__titulo', 'Próximo concurso'));
+    var g = el('div', 'metricas-grade');
+    g.appendChild(metrica('Concurso', u.proximo.concurso, u.proximo.data || 'data a confirmar'));
+    g.appendChild(metrica('Prêmio estimado', reais(u.proximo.estimativa), 'faixa principal'));
+    if (u.proximo.acumulado) {
+      g.appendChild(metrica('Já acumulado', reais(u.proximo.acumulado), 'entra no prêmio principal'));
+    }
+    if (u.especial) {
+      g.appendChild(metrica('Reserva para concurso especial', reais(u.especial)));
+    }
+    c.appendChild(g);
+    return c;
+  }
+
+  function cartaoValorEsperado(l, ev, o) {
+    var c = el('div', 'cartao');
+    c.appendChild(el('h3', 'cartao__titulo', 'Valor esperado no concurso ' + o.ultimo.proximo.concurso));
+
+    // a aposta montada no passo 1
+    var formato = l.tipo === 'colunas'
+      ? { lens: formatoSuperSete(l) }
+      : { k: dezenasAtual(), kt: l.extra && l.extra.tipo === 'dezenas' ? ((estado.extras || {}).trevosQtd || l.extra.padrao) : 0 };
+    var custoAposta = l.tipo === 'colunas'
+      ? formato.lens.reduce(function (a, b) { return a * b; }, 1) * l.preco
+      : LC.custoPrevisto(l, formato.k, formato.kt);
+    var simples = custoAposta / l.preco;
+    var chance = LC.valor.chanceAlgumPremio(l, formato);
+
+    var g = el('div', 'metricas-grade');
+    g.appendChild(metrica('Retorno esperado', fmtPct(ev.retorno),
+      'de cada R$ 100 apostados, voltam ' + LC.moeda(ev.retorno * 100)));
+    g.appendChild(metrica('Sua aposta vale', LC.moeda(ev.ev * simples),
+      'custa ' + LC.moeda(custoAposta) + ' · ' + descricaoAposta(l, formato)));
+    g.appendChild(metrica('Chance de algum prêmio', fmtChance(chance), 'com ' + descricaoAposta(l, formato)));
+    if (ev.empate) {
+      g.appendChild(metrica('Prêmio que empataria', reais(ev.empate),
+        estado.premios.dividir ? 'contando a divisão: ' + reais(ev.empateComDivisao) : 'sem contar divisão'));
+    }
+    c.appendChild(g);
+
+    c.appendChild(barraRetorno(ev));
+
+    // ajustes
+    var aj = el('div', 'ev-ajustes');
+    aj.appendChild(alternadorEV('Considerar que o prêmio principal pode ser dividido', 'dividir'));
+
+    var irLinha = el('div', 'ev-ajustes__linha');
+    irLinha.appendChild(alternadorEV('Descontar 30% de IR dos prêmios acima de', 'ir'));
+    var inIR = inputEV(estado.premios.limiteIR.toLocaleString('pt-BR', { minimumFractionDigits: 2 }), 'Limite de isenção do IR');
+    inIR.addEventListener('change', function () {
+      var v = lerValorBR(inIR.value);
+      if (v != null) estado.premios.limiteIR = v;
+      salvar();
+      renderPremios();
+    });
+    irLinha.appendChild(inIR);
+    aj.appendChild(irLinha);
+
+    var apLinha = el('label', 'ev-ajustes__linha');
+    apLinha.appendChild(el('span', null, 'Apostas simples no próximo concurso'));
+    var inAp = inputEV(ajustesEV.apostas ? fmtInteiro(ajustesEV.apostas) : '', 'Apostas simples no próximo concurso');
+    inAp.placeholder = fmtInteiro(LC.valor.apostasEstimadas(l, o.ultimo));
+    inAp.title = 'Estimado pelos ganhadores da faixa mais baixa do último concurso. Concursos acumulados costumam vender mais.';
+    inAp.addEventListener('change', function () {
+      ajustesEV.apostas = lerValorBR(inAp.value);
+      renderPremios();
+    });
+    apLinha.appendChild(inAp);
+    aj.appendChild(apLinha);
+
+    var amLinha = el('label', 'ev-ajustes__linha');
+    amLinha.appendChild(el('span', null, 'Média das outras faixas sobre'));
+    var sel = el('select', 'ev-input');
+    [10, 20, 50, 100].forEach(function (n) {
+      var op = el('option', null, 'últimos ' + n + ' concursos');
+      op.value = n;
+      if (n === estado.premios.amostra) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener('change', function () {
+      estado.premios.amostra = Number(sel.value);
+      salvar();
+      carregarOficial(false);
+    });
+    amLinha.appendChild(sel);
+    aj.appendChild(amLinha);
+    c.appendChild(aj);
+
+    // faixa a faixa
+    var tab = el('table', 'tabela');
+    var th = el('tr');
+    [['Faixa'], ['Chance', 'numa aposta simples'], ['Prêmio considerado', 'valor bruto — edite para simular'],
+     ['Origem'], ['Você recebe', 'depois da divisão esperada e do IR'], ['Vale por aposta', 'chance × o que você recebe']]
+      .forEach(function (t) {
+        var h = el('th', null, t[0]);
+        if (t[1]) h.title = t[1];
+        th.appendChild(h);
+      });
+    var thead = el('thead');
+    thead.appendChild(th);
+    tab.appendChild(thead);
+    var tb = el('tbody');
+    ev.linhas.forEach(function (lin) {
+      var tr = el('tr');
+      if (lin.base === 'sem-dados') tr.className = 'fraco';
+      tr.appendChild(el('td', null, lin.nome));
+      tr.appendChild(el('td', 'num', fmtChance(lin.p)));
+
+      var td = el('td', 'num');
+      var inp = inputEV(lin.bruto ? lin.bruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
+        'Prêmio considerado para ' + lin.nome);
+      inp.classList.add('ev-input--premio');
+      inp.placeholder = 'informe';
+      inp.addEventListener('change', function () {
+        var v = lerValorBR(inp.value);
+        if (lin.i === 0) ajustesEV.principal = v;
+        else if (v == null) delete ajustesEV.manual[lin.i];
+        else ajustesEV.manual[lin.i] = v;
+        renderPremios();
+      });
+      td.appendChild(inp);
+      tr.appendChild(td);
+
+      tr.appendChild(el('td', 'fraco', {
+        estimativa: 'estimativa CAIXA',
+        media: 'média de ' + lin.amostraPagos + ' concurso' + (lin.amostraPagos === 1 ? '' : 's'),
+        fixo: 'valor fixo',
+        manual: 'digitado',
+        'sem-dados': 'sem ganhadores recentes'
+      }[lin.base]));
+
+      var notas = [];
+      if (lin.divisor < 0.995) notas.push('divisão ×' + lin.divisor.toFixed(2).replace('.', ','));
+      if (lin.taxado) notas.push('IR');
+      var tdR = el('td', 'num', LC.moeda(lin.liquido));
+      if (notas.length) tdR.appendChild(el('span', 'ev-nota', notas.join(' · ')));
+      tr.appendChild(tdR);
+      tr.appendChild(el('td', 'num', LC.moeda(lin.contribuicao)));
+      tb.appendChild(tr);
+    });
+    var tot = el('tr', 'tabela__total');
+    tot.appendChild(el('td', null, 'Total'));
+    var tdTot = el('td', 'num fraco', 'uma aposta simples custa ' + LC.moeda(l.preco));
+    tdTot.colSpan = 4;
+    tot.appendChild(tdTot);
+    tot.appendChild(el('td', 'num', LC.moeda(ev.ev)));
+    tb.appendChild(tot);
+    tab.appendChild(tb);
+    var rol = el('div', 'tabela-rolagem');
+    rol.appendChild(tab);
+    c.appendChild(rol);
+
+    c.appendChild(el('p', 'cartao__texto',
+      'O prêmio principal usa a estimativa divulgada para o próximo concurso; as outras faixas, a média paga por ganhador ' +
+      'nos concursos recentes. Apostar mais dezenas não muda o retorno por real: uma aposta que vale 7 simples custa 7 vezes mais e rende 7 vezes mais. ' +
+      'São valores de referência — o rateio real só sai depois do sorteio.'));
+    return c;
+  }
+
+  function inputEV(valor, rotulo) {
+    var i = el('input', 'ev-input');
+    i.type = 'text';
+    i.inputMode = 'decimal';
+    i.value = valor;
+    i.setAttribute('aria-label', rotulo);
+    return i;
+  }
+
+  function formatoSuperSete(l) {
+    var fix = estado.ssFixas || {};
+    var k = dezenasAtual();
+    var lens = [];
+    for (var c = 0; c < l.colunas; c++) lens.push(Math.max((fix[c] || []).length, Math.min(k, l.escolhaMax)));
+    return lens;
+  }
+
+  function descricaoAposta(l, f) {
+    if (l.tipo === 'colunas') return f.lens.join('·') + ' algarismos por coluna';
+    var t = f.k + ' dezenas';
+    if (f.kt) t += ' + ' + f.kt + ' trevos';
+    return t;
+  }
+
+  function alternadorEV(rot, chave) {
+    var lab = el('label', 'alternador');
+    var cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = !!estado.premios[chave];
+    cb.addEventListener('change', function () {
+      estado.premios[chave] = cb.checked;
+      salvar();
+      renderPremios();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(el('span', null, rot));
+    return lab;
+  }
+
+  /** O preço da aposta como uma barra: a parte colorida é o que volta, faixa a faixa. */
+  function barraRetorno(ev) {
+    var caixa = el('div', 'ev-barra');
+    var trilho = el('div', 'ev-barra__trilho');
+    trilho.setAttribute('role', 'img');
+    trilho.setAttribute('aria-label', 'Do preço da aposta, ' + fmtPct(ev.retorno) + ' volta em prêmios esperados');
+    var positivas = ev.linhas.filter(function (x) { return x.contribuicao > 0; });
+    var tom = function (i) { return (1 - i / Math.max(positivas.length, 1) * 0.7).toFixed(2); };
+    positivas.forEach(function (lin, i) {
+      var s = el('div', 'ev-barra__seg');
+      s.style.width = Math.min(100, lin.contribuicao / ev.preco * 100) + '%';
+      s.style.setProperty('--a', tom(i));
+      s.title = lin.nome + ': ' + LC.moeda(lin.contribuicao / ev.preco * 100) + ' a cada R$ 100';
+      trilho.appendChild(s);
+    });
+    caixa.appendChild(trilho);
+
+    var leg = el('div', 'ev-barra__legenda');
+    positivas.forEach(function (lin, i) {
+      var item = el('span', 'ev-barra__item');
+      var cor = el('i');
+      cor.style.setProperty('--a', tom(i));
+      item.appendChild(cor);
+      item.appendChild(document.createTextNode(lin.nome + ' ' + LC.moeda(lin.contribuicao / ev.preco * 100)));
+      leg.appendChild(item);
+    });
+    var resto = el('span', 'ev-barra__item ev-barra__item--resto');
+    resto.appendChild(el('i'));
+    resto.appendChild(document.createTextNode('não volta ' + LC.moeda(Math.max(0, 100 - ev.retorno * 100))));
+    leg.appendChild(resto);
+    caixa.appendChild(el('span', 'ev-barra__rot', 'Para onde vão R$ 100 apostados'));
+    caixa.appendChild(leg);
+    return caixa;
+  }
+
+  function cartaoLote(l, ev) {
+    if (!resultado || !resultado.jogos.length || resultado.lotId !== l.id) return null;
+    var nenhum = 1, memo = {};
+    resultado.jogos.forEach(function (j) {
+      var f = LC.valor.formatoDoJogo(l, j);
+      var chave = JSON.stringify(f);
+      if (!(chave in memo)) memo[chave] = LC.valor.chanceAlgumPremio(l, f) || 0;
+      nenhum *= 1 - memo[chave];
+    });
+    var volta = resultado.custo * ev.retorno;
+
+    var c = el('div', 'cartao');
+    c.appendChild(el('h3', 'cartao__titulo', 'Seu lote de ' + resultado.jogos.length + (resultado.jogos.length === 1 ? ' jogo' : ' jogos')));
+    var g = el('div', 'metricas-grade');
+    g.appendChild(metrica('Custo', LC.moeda(resultado.custo)));
+    g.appendChild(metrica('Volta em média', LC.moeda(volta)));
+    g.appendChild(metrica('Perda esperada', LC.moeda(resultado.custo - volta)));
+    g.appendChild(metrica('Chance de algum prêmio', '≈ ' + fmtPct(1 - nenhum), 'tratando os jogos como independentes'));
+    c.appendChild(g);
+    c.appendChild(el('p', 'cartao__texto',
+      'Filtros, estratégias e fechamentos mudam como os acertos se espalham entre os jogos, mas não o valor esperado: ele depende só de quanto se aposta.'));
+    return c;
+  }
+
+  function cartaoRecentes(amostra) {
+    var c = el('div', 'cartao');
+    c.appendChild(el('h3', 'cartao__titulo', 'Concursos recentes'));
+    var tab = el('table', 'tabela');
+    var th = el('tr');
+    ['Concurso', 'Data', 'Ganhadores', 'Prêmio principal', 'Arrecadação'].forEach(function (t) { th.appendChild(el('th', null, t)); });
+    var thead = el('thead');
+    thead.appendChild(th);
+    tab.appendChild(thead);
+    var tb = el('tbody');
+    amostra.slice(0, 15).forEach(function (r) {
+      var f1 = (r.rateio || [])[0] || { ganhadores: 0, valor: 0 };
+      var tr = el('tr');
+      tr.appendChild(el('td', 'num', String(r.concurso)));
+      tr.appendChild(el('td', null, r.data));
+      tr.appendChild(el('td', 'num', f1.ganhadores ? fmtInteiro(f1.ganhadores) : 'acumulou'));
+      tr.appendChild(el('td', 'num', f1.ganhadores ? LC.moeda(f1.valor) : '—'));
+      tr.appendChild(el('td', 'num fraco', r.arrecadado ? LC.moeda(r.arrecadado) : '—'));
+      tb.appendChild(tr);
+    });
+    tab.appendChild(tb);
+    var rol = el('div', 'tabela-rolagem');
+    rol.appendChild(tab);
+    c.appendChild(rol);
+    return c;
+  }
+
+  /* ---- histórico direto da CAIXA ---------------------------------------- */
+
+  function baixarHistorico() {
+    var l = lot();
+    var n = Number($('#inQtdHistorico').value) || 100;
+    var btn = $('#btnBaixarHistorico');
+    btn.disabled = true;
+    btn.textContent = 'Baixando…';
+    LC.resultados.buscarRecentes(l, n, function (feitos, total) {
+      btn.textContent = 'Baixando ' + feitos + ' de ' + total + '…';
+    }).then(function (lista) {
+      if (estado.lotId !== l.id) return;
+      $('#inHistorico').value = lista.map(function (r) { return LC.resultados.linhaHistorico(l, r); })
+        .filter(Boolean).join('\n');
+      carregarHistorico();
+      if (lista.falhas) toast(lista.falhas + ' concursos não responderam — baixe de novo para completar.', 'alerta');
+    }, function () {
+      toast('Não consegui baixar os concursos. Confira a conexão ou cole o histórico à mão.', 'erro');
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = 'Baixar concursos';
+    });
   }
 
   /* ======================================================================
@@ -2149,8 +2858,10 @@
       p.classList.toggle('is-ativo', ativa);
       p.hidden = !ativa;
     });
+    abaAtual = nome;
     if (nome === 'cadeia') forja.mostrar();
     else forja.esconder();
+    if (nome === 'premios') abrirPremios();
   }
 
   /* ======================================================================
@@ -2253,6 +2964,16 @@
         '<b>Cobertura</b> — reparte o uso das dezenas por igual entre os jogos.',
         '<b>Fechamento</b> — combina o pool marcado; no modo reduzido, calcula o menor conjunto de jogos que garante um mínimo de acertos.'
       ]);
+
+      h('Prêmios e valor esperado');
+      p('A aba <b>Prêmios</b> busca os concursos direto da API pública da CAIXA (com um espelho comunitário de reserva), sem cadastro e sem custo. Ela mostra o último resultado com o rateio, a estimativa do próximo concurso e o <b>valor esperado</b>: quanto, em média, volta de cada real apostado.');
+      ul([
+        'A chance de cada faixa é exata (combinatória). O prêmio principal usa a estimativa divulgada; as outras faixas, a média paga nos concursos recentes.',
+        'Com muitas apostas, o prêmio principal pode ser dividido: o app estima quantos ganhadores dividiriam com você.',
+        'Prêmios acima do limite de isenção pagam 30% de IR. O limite é editável.',
+        'Todo prêmio da tabela pode ser editado para simular outro cenário.'
+      ]);
+      p('No <b>Conferidor</b>, <b>Buscar resultado oficial</b> preenche as dezenas e traz o rateio: cada jogo passa a mostrar quanto recebe em reais, contando todas as apostas simples de um jogo com mais dezenas. No <b>Histórico</b>, dá para baixar os últimos concursos em vez de colar.');
 
       h('Semente');
       p('A semente comanda todo o sorteio. Guardando a semente e os mesmos ajustes, você reproduz exatamente os mesmos jogos — útil para conferir depois ou dividir um bolão.');
@@ -2662,6 +3383,15 @@
     });
 
     $('#btnGerar').addEventListener('click', gerar);
+
+    // resultado editado à mão depois de buscado: o rateio oficial deixa de valer
+    $('#entradaResultado').addEventListener('input', invalidarOficial);
+    $('#entradaResultado').addEventListener('click', function (ev) {
+      if (ev.target.closest && ev.target.closest('.dez')) invalidarOficial();
+    });
+    $('#inConcurso').addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') buscarResultadoOficial();
+    });
     $('#btnTema').addEventListener('click', alternarTema);
     $('#btnAjuda').addEventListener('click', mostrarAjuda);
 
@@ -2720,6 +3450,9 @@
           renderJogos(); renderEstatisticas();
           break;
         case 'conferir': conferir(); break;
+        case 'buscar-resultado': buscarResultadoOficial(); break;
+        case 'atualizar-premios': carregarOficial(true); break;
+        case 'baixar-historico': baixarHistorico(); break;
         case 'limpar-conferencia':
           conferencia = null;
           limpar($('#resultadoConferencia'));
