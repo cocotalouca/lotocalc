@@ -3,7 +3,8 @@
 Gerador de jogos para **todas as modalidades das Loterias CAIXA**, com volante interativo,
 filtros estatísticos, fechamentos com garantia, conferidor e uma cadeia de hash visualizável.
 
-Roda inteiramente no navegador. Nenhum dado sai do dispositivo — não há servidor, conta nem rede.
+Roda inteiramente no navegador, sem servidor nem conta. Seus jogos nunca saem do dispositivo; a única
+conexão é a consulta aos resultados públicos da CAIXA, quando você pede.
 
 ## Como abrir
 
@@ -21,7 +22,7 @@ Para empacotar tudo num arquivo só:
 node build.mjs
 ```
 
-Isso escreve `dist/lotocalc.html` (documento completo e autocontido, ~242 KB — bom para mandar
+Isso escreve `dist/lotocalc.html` (documento completo e autocontido, ~302 KB — bom para mandar
 por e-mail ou guardar num pendrive) e `dist/lotocalc.fragmento.html` (o mesmo conteúdo sem as
 tags `<html>/<head>/<body>`, para hospedagens que fornecem o próprio esqueleto).
 
@@ -87,6 +88,48 @@ Ela pode vir de:
 Ao lado do campo aparece a *impressão digital* da semente: uma grade espelhada 8×8 derivada do
 estado da cadeia. Sementes diferentes, desenhos diferentes.
 
+## Resultados oficiais e valor esperado
+
+O app busca os concursos direto do navegador, de graça e sem chave:
+
+1. **API pública do Portal de Loterias da CAIXA** (`servicebus2.caixa.gov.br/portaldeloterias/api/<modalidade>[/<concurso>]`);
+2. **[loteriascaixa-api](https://loteriascaixa-api.herokuapp.com/api)**, espelho comunitário, se a primeira falhar.
+
+As duas liberam CORS, então funciona até com o `index.html` aberto direto do disco. Cada concurso
+fica guardado no `localStorage` (concurso apurado não muda); só o "último" é consultado de novo,
+no máximo a cada 10 minutos. Sem conexão, o app usa o que já tiver guardado.
+
+A aba **Prêmios** mostra:
+
+- o último concurso, com dezenas e rateio — e, ao lado de cada faixa, os **ganhadores esperados**
+  pela combinatória para aquela arrecadação (uma checagem de que as chances estão certas);
+- a estimativa e o acumulado do próximo concurso;
+- o **valor esperado**: quanto volta, em média, de cada real apostado, faixa a faixa.
+
+Como o valor esperado é calculado:
+
+- a chance de cada faixa é exata (hipergeométrica; binomial no Super Sete; trevos, Time do Coração
+  e Mês da Sorte entram como eventos independentes);
+- o prêmio principal usa a **estimativa** divulgada para o próximo concurso; as outras faixas, a
+  **média paga por ganhador** nos últimos N concursos (faixas de valor fixo saem exatas);
+- a **divisão do prêmio principal**: outros ganhadores seguem Poisson(λ = apostas × p), e o que se
+  espera receber é `prêmio × (1 − e^−λ) / λ`. As apostas vêm dos ganhadores da faixa mais baixa do
+  último concurso (milhares de ganhadores dão uma medida precisa);
+- **IR de 30%** sobre prêmios acima do limite de isenção (editável);
+- todo prêmio da tabela é editável, para simular outro cenário.
+
+Também aparecem o prêmio principal que empataria a aposta, a chance de ganhar qualquer faixa com o
+tamanho de aposta escolhido e, havendo jogos gerados, o valor esperado e a perda esperada do lote.
+
+No **Conferidor**, *Buscar resultado oficial* preenche o resultado (o último ou um concurso pelo
+número) e traz o rateio: cada jogo passa a mostrar quanto recebe em reais, contando todas as apostas
+simples de um jogo com mais dezenas (8 dezenas com 5 acertos na Mega = 3 quinas + 15 quadras). A
+Dupla Sena confere os dois sorteios. No **Histórico**, dá para baixar os últimos 30 a 250 concursos
+em vez de colar.
+
+Loteca e Loteria Federal ficam fora do valor esperado: a Loteca depende de partidas reais, e a
+Federal vende bilhetes com prêmios fixos, sem rateio. A Loteca ainda recebe o rateio no conferidor.
+
 ## Orçamento
 
 Em vez da quantidade de jogos, dá para dizer **quanto quer gastar**. O app calcula quantos jogos
@@ -104,6 +147,8 @@ assets/js/semente.js    sementes de texto, arquivo e gesto; impressão digital
 assets/js/filtros.js    métricas do jogo e faixas sugeridas
 assets/js/gerador.js    motor de geração e fechamentos
 assets/js/analise.js    estatísticas, leitura de histórico e conferidor
+assets/js/resultados.js busca de concursos (CAIXA + espelho), normalização e cache
+assets/js/valor.js      chance por faixa, valor esperado e prêmio em reais de cada jogo
 assets/js/exportar.js   TXT, CSV, JSON e cópia
 assets/js/app.js        interface, volante, gráficos em canvas
 build.mjs               empacota tudo em dist/lotocalc.html
@@ -121,8 +166,9 @@ Os **preços e as faixas de premiação são valores de referência** e ficam ed
 [loterias.caixa.gov.br](https://loterias.caixa.gov.br). A lista de times da Timemania também
 muda de tempos em tempos.
 
-O conferidor informa **quantos acertos** e **qual faixa** cada jogo atingiu; ele não calcula
-valores de prêmio, que dependem do rateio de cada concurso.
+Com o resultado digitado à mão, o conferidor informa **quantos acertos** e **qual faixa** cada jogo
+atingiu. Os **valores em reais** aparecem quando o resultado vem da busca oficial, que traz o rateio
+do concurso. O valor esperado usa estimativas e médias — o rateio real só sai depois do sorteio.
 
 Loteria é sorteio. Nenhuma estratégia, filtro, peso ou fechamento altera a probabilidade de um
 número ser sorteado — eles servem para organizar apostas, cobrir combinações e controlar gasto,

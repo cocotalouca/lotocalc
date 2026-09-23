@@ -175,6 +175,7 @@
       <button type="button" role="tab" class="aba is-ativa" data-aba="jogos" aria-selected="true">Jogos</button>
       <button type="button" role="tab" class="aba" data-aba="cadeia" aria-selected="false">Cadeia</button>
       <button type="button" role="tab" class="aba" data-aba="estatisticas" aria-selected="false">Estatísticas</button>
+      <button type="button" role="tab" class="aba" data-aba="premios" aria-selected="false">Prêmios</button>
       <button type="button" role="tab" class="aba" data-aba="conferidor" aria-selected="false">Conferidor</button>
       <button type="button" role="tab" class="aba" data-aba="historico" aria-selected="false">Histórico</button>
     </div>
@@ -201,7 +202,7 @@
       <div class="vazio" id="vazioJogos">
         <div class="vazio__glifo" aria-hidden="true"></div>
         <p class="vazio__titulo">Nenhum jogo ainda</p>
-        <p class="vazio__texto">Escolha a modalidade, ajuste a aposta e aperte <b>Gerar jogos</b>. Nada sai daqui: tudo roda no seu navegador.</p>
+        <p class="vazio__texto">Escolha a modalidade, ajuste a aposta e aperte <b>Gerar jogos</b>. Seus jogos não saem daqui: tudo roda no seu navegador.</p>
       </div>
     </section>
 
@@ -307,11 +308,22 @@
       </div>
     </section>
 
+    <!-- PRÊMIOS -->
+    <section class="painel" id="painel-premios" role="tabpanel" hidden>
+      <div id="conteudoPremios"></div>
+    </section>
+
     <!-- CONFERIDOR -->
     <section class="painel" id="painel-conferidor" role="tabpanel" hidden>
       <div class="cartao">
         <h3 class="cartao__titulo">Resultado do concurso</h3>
         <p class="cartao__texto" id="ajudaConferidor">Cole ou digite as dezenas sorteadas, separadas por espaço, vírgula ou traço.</p>
+        <div class="busca-oficial">
+          <label class="entrada-res__rot" for="inConcurso">Concurso</label>
+          <input type="number" id="inConcurso" min="1" step="1" placeholder="último" inputmode="numeric">
+          <button type="button" class="btn" data-acao="buscar-resultado" id="btnBuscarResultado">Buscar resultado oficial</button>
+        </div>
+        <div id="notaOficial"></div>
         <div id="entradaResultado"></div>
         <div class="linha-acoes">
           <button type="button" class="btn btn--principal" data-acao="conferir">Conferir jogos</button>
@@ -336,6 +348,16 @@
           <button type="button" class="btn btn--principal" data-acao="carregar-historico">Carregar histórico</button>
           <button type="button" class="btn btn--fino" data-acao="limpar-historico">Descartar</button>
         </div>
+        <div class="busca-oficial" id="baixarHistorico">
+          <label class="entrada-res__rot" for="inQtdHistorico">Ou baixe da CAIXA</label>
+          <select id="inQtdHistorico">
+            <option value="30">últimos 30</option>
+            <option value="60">últimos 60</option>
+            <option value="100" selected>últimos 100</option>
+            <option value="250">últimos 250</option>
+          </select>
+          <button type="button" class="btn" data-acao="baixar-historico" id="btnBaixarHistorico">Baixar concursos</button>
+        </div>
       </div>
       <div id="resumoHistorico"></div>
     </section>
@@ -345,7 +367,8 @@
 
 <footer class="rodape">
   <p>
-    <b>Lotocalc</b> roda inteiramente no seu navegador — nenhum dado sai do dispositivo.
+    <b>Lotocalc</b> roda inteiramente no seu navegador — seus jogos nunca saem do dispositivo.
+    A única conexão é a consulta aos resultados públicos da CAIXA, quando você pede.
     Preços e faixas de premiação são valores de referência: confira sempre em
     <span class="rodape__link">loterias.caixa.gov.br</span>.
   </p>
@@ -377,6 +400,8 @@
 <script src="assets/js/semente.js"></script>
 <script src="assets/js/gerador.js"></script>
 <script src="assets/js/analise.js"></script>
+<script src="assets/js/resultados.js"></script>
+<script src="assets/js/valor.js"></script>
 <script src="assets/js/exportar.js"></script>
 <script src="assets/js/app.js"></script>
 </body>

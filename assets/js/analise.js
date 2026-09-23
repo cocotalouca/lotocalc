@@ -176,6 +176,13 @@
       }
 
       r.faixa = faixaDe(lot, r.acertos, r.acertosExtra);
+
+      // Dupla Sena: o mesmo jogo concorre no segundo sorteio
+      if (res.dezenas2 && j.dezenas) {
+        r.acertos2 = contarComuns(j.dezenas, res.dezenas2);
+        var f2 = faixaDe(lot, r.acertos2);
+        if (f2 && (!r.faixa || f2.n > r.faixa.n)) r.faixa = { n: f2.n, nome: f2.nome + ' (2º sorteio)' };
+      }
       return r;
     });
 
