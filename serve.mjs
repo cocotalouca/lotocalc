@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
-const PORTA = Number(process.argv[2]) || 4173;
+const PORTA = Number(process.argv[2]) || Number(process.env.PORT) || 4173;
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',

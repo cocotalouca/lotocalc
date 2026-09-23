@@ -4,8 +4,11 @@
     {
       "name": "lotocalc",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["serve.mjs"],
-      "port": 4173
+      "runtimeArgs": [
+        "serve.mjs"
+      ],
+      "port": 4173,
+      "autoPort": true
     }
   ]
 }
