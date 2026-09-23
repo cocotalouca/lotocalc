@@ -1,7 +1,8 @@
 # Lotocalc
 
-Gerador de jogos para **todas as modalidades das Loterias CAIXA**, com volante interativo,
-filtros estatísticos, fechamentos com garantia, conferidor e uma cadeia de hash visualizável.
+Assistente de apostas e gerador de jogos para **todas as modalidades das Loterias CAIXA**: sugestões
+montadas pelo valor esperado do dia, volante interativo, filtros estatísticos, fechamentos com garantia,
+conferidor e uma cadeia de hash visualizável.
 
 Roda inteiramente no navegador, sem servidor nem conta. Seus jogos nunca saem do dispositivo; a única
 conexão é a consulta aos resultados públicos da CAIXA, quando você pede.
@@ -16,15 +17,57 @@ Para servir por HTTP (opcional, útil ao editar ou para abrir de outro aparelho 
 node serve.mjs
 ```
 
+A porta padrão é 4173; passe outra como argumento (`node serve.mjs 8080`) ou pela variável `PORT`.
+
 Para empacotar tudo num arquivo só:
 
 ```bash
 node build.mjs
 ```
 
-Isso escreve `dist/lotocalc.html` (documento completo e autocontido, ~302 KB — bom para mandar
+Isso escreve `dist/lotocalc.html` (documento completo e autocontido, ~375 KB — bom para mandar
 por e-mail ou guardar num pendrive) e `dist/lotocalc.fragmento.html` (o mesmo conteúdo sem as
 tags `<html>/<head>/<body>`, para hospedagens que fornecem o próprio esqueleto).
+
+## As quatro seções
+
+- **Sugestões** — o assistente (abre por padrão). Mostra os próximos sorteios de todas as modalidades e
+  monta cestas de apostas prontas para o seu orçamento.
+- **Gerador** — o controle fino: aposta, volante, estratégia, filtros e, em abas, os jogos, o conferidor,
+  as estatísticas do lote e a cadeia.
+- **Prêmios** — último resultado com rateio, próximo prêmio e valor esperado faixa a faixa.
+- **Histórico** — concursos passados, baixados da CAIXA ou colados.
+
+## Sugestões
+
+Ao abrir, o app busca o último concurso de cada modalidade e calcula, para cada uma:
+
+- quando é o próximo sorteio e o prêmio estimado;
+- o **retorno**: quanto volta, em média, de cada real apostado (mesmo cálculo da seção Prêmios);
+- a chance de levar alguma faixa e a chance do prêmio máximo, em cada tamanho de aposta.
+
+Em segundo plano, busca os 10 concursos mais recentes de cada uma para refinar as médias das faixas de
+baixo (ficam guardados; nas visitas seguintes é instantâneo).
+
+Com isso e as suas preferências — orçamento, foco (ganhar algo ↔ prêmio grande), sorteios de hoje, até
+amanhã ou da semana, tipos de aposta (simples, múltiplas, fechamentos) e modalidades — o assistente
+monta até sete cestas:
+
+| Cesta | O que faz |
+|---|---|
+| Mix do seu perfil | reparte o orçamento entre várias modalidades, pesando retorno e foco |
+| Onde o real rende mais | concentra no melhor retorno do período |
+| Caça ao prêmio máximo | os maiores prêmios, pesados pelo custo da aposta; usa múltiplas se couber |
+| Ganhar alguma coisa | apostas simples onde as faixas de baixo saem com mais frequência |
+| Uma aposta turbinada | a maior múltipla que cabe no orçamento |
+| Fechamento com garantia | pools fechados com garantia (ex.: Lotofácil 18 dezenas → 13 acertos em 6 jogos) |
+| Uma em cada sorteio | uma simples em cada modalidade, rodada após rodada |
+
+Cada cesta mostra custo, quanto volta em média, a chance aproximada de algum prêmio e a chance do prêmio
+máximo. **Gerar os números** sorteia todos os jogos da cesta de uma vez (com a estratégia escolhida:
+equilibrado, sorteio limpo, cobertura ou cadeia); dá para copiar tudo em texto ou abrir cada grupo no
+gerador para conferir, exportar e imprimir. **Montar** leva uma aposta da cesta para o gerador já
+configurada.
 
 ## Modalidades
 
@@ -139,7 +182,7 @@ cabem, mostra a sobra e lista o que o mesmo dinheiro compraria com apostas de ou
 
 ```
 index.html              marcação
-assets/css/app.css      tema claro (papel) e escuro (mesa); a cor da modalidade re-tinge tudo
+assets/css/app.css      tema claro e escuro; a cor da modalidade tinge botões, volante e bolas
 assets/js/loterias.js   catálogo das modalidades, preços e faixas de premiação
 assets/js/rng.js        mulberry32 com semente reprodutível
 assets/js/cadeia.js     hash encadeado e projeção em parâmetros
@@ -149,6 +192,7 @@ assets/js/gerador.js    motor de geração e fechamentos
 assets/js/analise.js    estatísticas, leitura de histórico e conferidor
 assets/js/resultados.js busca de concursos (CAIXA + espelho), normalização e cache
 assets/js/valor.js      chance por faixa, valor esperado e prêmio em reais de cada jogo
+assets/js/assistente.js avaliação do dia por modalidade e montagem das cestas sugeridas
 assets/js/exportar.js   TXT, CSV, JSON e cópia
 assets/js/app.js        interface, volante, gráficos em canvas
 build.mjs               empacota tudo em dist/lotocalc.html

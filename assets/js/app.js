@@ -50,6 +50,16 @@
     semente: '',
     historicoTexto: {},   // por modalidade
     premios: { amostra: 20, dividir: true, ir: true, limiteIR: 2428.80 },
+    assistente: {
+      orcamento: 50,
+      perfil: 0.5,
+      horizonte: 'amanha',
+      estilos: { simples: true, multiplas: true, fechamentos: true },
+      modalidades: {},
+      estrategia: 'equilibrado'
+    },
+    vista: 'sugestoes',
+    sub: 'jogos',
     tema: null
   };
 
@@ -74,10 +84,13 @@
       if (!bruto) return;
       var lido = JSON.parse(bruto);
       var padraoPremios = estado.premios;
+      var padraoAssistente = estado.assistente;
       Object.keys(lido).forEach(function (k) {
         if (k in estado) estado[k] = lido[k];
       });
       estado.premios = Object.assign({}, padraoPremios, estado.premios || {});
+      estado.assistente = Object.assign({}, padraoAssistente, estado.assistente || {});
+      estado.assistente.estilos = Object.assign({}, padraoAssistente.estilos, estado.assistente.estilos || {});
     } catch (e) { /* dado corrompido — ignora */ }
   }
 
@@ -163,6 +176,15 @@
     raiz.style.setProperty('--brand-texto', temaEfetivo() === 'dark' ? v.claro : v.escuro);
   }
 
+  /** Tinge um trecho da página com a cor de outra modalidade (grupos da cesta). */
+  function tingir(no, l) {
+    var v = variantesDaMarca(l.brand);
+    no.style.setProperty('--brand', l.brand);
+    no.style.setProperty('--brand-rgb', l.brandRgb);
+    no.style.setProperty('--sobre-brand', v.sobre);
+    no.style.setProperty('--brand-texto', temaEfetivo() === 'dark' ? v.claro : v.escuro);
+  }
+
   /** Tokens de cor atuais, lidos do CSS — acompanham tema e modalidade. */
   function paleta() {
     var cs = getComputedStyle(document.documentElement);
@@ -245,7 +267,7 @@
       b.style.setProperty('--t', l.brand);
       b.setAttribute('aria-pressed', l.id === estado.lotId ? 'true' : 'false');
       b.appendChild(el('span', 'tile__nome', l.nome));
-      b.appendChild(el('span', 'tile__meta', l.sorteio));
+      b.appendChild(el('span', 'tile__meta', metaTile(l)));
       b.addEventListener('click', function () {
         if (estado.lotId === l.id) return;
         estado.lotId = l.id;
@@ -270,6 +292,8 @@
     });
 
     $('#resumoModalidade').textContent = l.resumo;
+    $('#tituloPremios').textContent = 'Prêmios da ' + l.nome;
+    $('#tituloHistorico').textContent = 'Histórico da ' + l.nome;
 
     lerHistoricoSalvo();
     renderCamposAposta();
@@ -615,27 +639,23 @@
     var caixa = $('#listaEstrategias');
     limpar(caixa);
 
-    var simples = (l.tipo !== 'dezenas');
-    if (simples) {
-      var n = el('div', 'nota');
-      n.appendChild(document.createTextNode(
-        'O ' + l.nome + ' usa o sorteio direto sobre as marcações do volante — as estratégias de dezenas não se aplicam aqui.'
-      ));
-      caixa.appendChild(n);
+    if (l.tipo !== 'dezenas') {
+      caixa.appendChild(el('div', 'nota nota-estrategias',
+        'O ' + l.nome + ' usa o sorteio direto sobre as marcações do volante — as estratégias de dezenas não se aplicam aqui.'));
       limpar($('#opcoesEstrategia'));
+      $('#nomeEstrategia').textContent = 'sorteio direto';
       return;
     }
 
     ESTRATEGIAS.forEach(function (e) {
-      var b = el('button', 'estrategia' + (estado.estrategia === e.id ? ' is-ativa' : ''));
+      var ativa = estado.estrategia === e.id;
+      var b = el('button', 'estrategia' + (ativa ? ' is-ativa' : ''));
       b.type = 'button';
+      b.title = e.desc;
       b.setAttribute('role', 'radio');
-      b.setAttribute('aria-checked', estado.estrategia === e.id ? 'true' : 'false');
+      b.setAttribute('aria-checked', ativa ? 'true' : 'false');
       b.appendChild(el('span', 'estrategia__marca'));
-      var txt = el('span');
-      txt.appendChild(el('span', 'estrategia__nome', e.nome));
-      txt.appendChild(el('span', 'estrategia__desc', e.desc));
-      b.appendChild(txt);
+      b.appendChild(el('span', 'estrategia__nome', e.nome));
       b.addEventListener('click', function () {
         estado.estrategia = e.id;
         renderEstrategias();
@@ -645,6 +665,10 @@
       });
       caixa.appendChild(b);
     });
+    var atual = ESTRATEGIAS.filter(function (x) { return x.id === estado.estrategia; })[0] || ESTRATEGIAS[0];
+    var desc = el('p', 'estrategia-desc nota-estrategias', atual.desc);
+    caixa.appendChild(desc);
+    $('#nomeEstrategia').textContent = atual.nome;
 
     renderOpcoesEstrategia();
   }
@@ -1247,12 +1271,15 @@
     lista.appendChild(frag);
   }
 
-  function cupom(l, j, i) {
+  /** Um jogo como cartão. opts.avulso = fora do lote do gerador (sem conferência nem fixas). */
+  function cupom(l, j, i, opts) {
+    opts = opts || {};
+    var confLote = opts.avulso ? null : conferencia;
     var c = el('div', 'cupom');
     c.style.setProperty('--i', Math.min(i, 60));
     if (j.relaxado) c.classList.add('is-relaxado');
 
-    var conf = conferencia && conferencia.linhas[i];
+    var conf = confLote && confLote.linhas[i];
     var valorPremio = conf && conf.premio ? conf.premio.total : 0;
     if (conf && (conf.faixa || valorPremio > 0)) c.classList.add('is-premiado');
 
@@ -1268,7 +1295,7 @@
         w.appendChild(el('div', 'cupom-coluna__r', 'C' + (idx + 1)));
         col.forEach(function (d) {
           var n = el('div', 'cupom-coluna__d', String(d));
-          if (conf && conf.marcados[idx]) n.style.color = 'var(--ok)';
+          if (conf && conf.marcados[idx]) n.classList.add('is-acerto');
           w.appendChild(n);
         });
         g.appendChild(w);
@@ -1280,20 +1307,20 @@
         var w = el('div', 'cupom-loteca__j');
         w.appendChild(el('div', 'cupom-loteca__n', String(idx + 1)));
         var mm = el('div', 'cupom-loteca__m', m.join(''));
-        if (conf && conf.marcados[idx]) mm.style.color = 'var(--ok)';
+        if (conf && conf.marcados[idx]) mm.classList.add('is-acerto');
         w.appendChild(mm);
         gl.appendChild(w);
       });
       corpo.appendChild(gl);
     } else {
       var bolas = el('div', 'bolas');
-      var fix = porEstado('fixa');
+      var fix = opts.avulso ? [] : porEstado('fixa');
       j.dezenas.forEach(function (n, idx) {
         var b = el('div', 'bola', LC.fmt(l, n));
         b.style.setProperty('--j', Math.min(idx, 24));
         if (fix.indexOf(n) !== -1) b.classList.add('bola--fixa');
-        if (conferencia) {
-          var acerto = (conferencia.resultado.dezenas || []).indexOf(n) !== -1;
+        if (confLote) {
+          var acerto = (confLote.resultado.dezenas || []).indexOf(n) !== -1;
           b.classList.add(acerto ? 'bola--acerto' : 'bola--erro');
         }
         bolas.appendChild(b);
@@ -1325,7 +1352,7 @@
         : conf.acertos + ' acerto' + (conf.acertos === 1 ? '' : 's');
       if (valorPremio > 0) texto += ' · ' + LC.moeda(valorPremio);
       var fp = el('span', 'faixa-premio', texto);
-      if (!conf.faixa && !(valorPremio > 0)) { fp.style.background = 'var(--surface-2)'; fp.style.color = 'var(--ink-3)'; }
+      if (!conf.faixa && !(valorPremio > 0)) fp.classList.add('is-nada');
       pe.appendChild(fp);
     }
     pe.appendChild(el('span', 'cupom__custo', LC.moeda(j.custo)));
@@ -1463,10 +1490,10 @@
       ctx.fillStyle = cores.tinta;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = "700 19px 'Martian Mono', ui-monospace, monospace";
+      ctx.font = "700 20px 'Inter', system-ui, sans-serif";
       ctx.fillText(Math.round((fatias[0].valor / total) * 100) + '%', cx, cy - 5);
       ctx.fillStyle = cores.tinta3;
-      ctx.font = "400 9px 'Instrument Sans', system-ui, sans-serif";
+      ctx.font = "500 11px 'Inter', system-ui, sans-serif";
       ctx.fillText('pares', cx, cy + 13);
     }, 20);
 
@@ -2727,8 +2754,8 @@
       ctx.closePath();
     }
 
-    function monoFamilia() { return "'Martian Mono', ui-monospace, Consolas, monospace"; }
-    function corpoFamilia() { return "'Instrument Sans', system-ui, sans-serif"; }
+    function monoFamilia() { return "'JetBrains Mono', ui-monospace, Consolas, monospace"; }
+    function corpoFamilia() { return "'Inter', system-ui, sans-serif"; }
 
     function atualizarMedidores() {
       $('#forjaHex').textContent = cadeia.hex().replace(/(.{8})/g, '$1 ').trim();
@@ -2847,21 +2874,48 @@
      ABAS
      ==================================================================== */
 
+  var SUBABAS = ['jogos', 'conferidor', 'estatisticas', 'cadeia'];
+
+  /**
+   * Troca a seção visível. Aceita uma seção (sugestoes, gerador, premios,
+   * historico) ou um painel do gerador (jogos, conferidor, estatisticas, cadeia).
+   */
   function trocarAba(nome) {
-    $$('.aba').forEach(function (a) {
-      var ativa = a.dataset.aba === nome;
-      a.classList.toggle('is-ativa', ativa);
-      a.setAttribute('aria-selected', ativa ? 'true' : 'false');
+    var vista = SUBABAS.indexOf(nome) !== -1 ? 'gerador' : nome;
+    if (['sugestoes', 'gerador', 'premios', 'historico'].indexOf(vista) === -1) vista = 'sugestoes';
+    if (vista === 'gerador' && SUBABAS.indexOf(nome) === -1) nome = SUBABAS.indexOf(estado.sub) !== -1 ? estado.sub : 'jogos';
+    var mudouVista = estado.vista !== vista;
+    estado.vista = vista;
+    if (vista === 'gerador') estado.sub = nome;
+
+    $$('.nav__item').forEach(function (b) {
+      var ativa = b.dataset.vista === vista;
+      b.classList.toggle('is-ativa', ativa);
+      if (ativa) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
-    $$('.painel').forEach(function (p) {
-      var ativa = p.id === 'painel-' + nome;
-      p.classList.toggle('is-ativo', ativa);
-      p.hidden = !ativa;
-    });
-    abaAtual = nome;
-    if (nome === 'cadeia') forja.mostrar();
+    $$('.vista').forEach(function (v) { v.hidden = v.id !== 'vista-' + vista; });
+    $('#faixaModalidades').hidden = vista === 'sugestoes';
+
+    if (vista === 'gerador') {
+      $$('.aba').forEach(function (a) {
+        var ativa = a.dataset.aba === nome;
+        a.classList.toggle('is-ativa', ativa);
+        a.setAttribute('aria-selected', ativa ? 'true' : 'false');
+      });
+      $$('.painel').forEach(function (p) {
+        var ativa = p.id === 'painel-' + nome;
+        p.classList.toggle('is-ativo', ativa);
+        p.hidden = !ativa;
+      });
+    }
+
+    abaAtual = vista === 'gerador' ? nome : vista;
+    if (abaAtual === 'cadeia') forja.mostrar();
     else forja.esconder();
-    if (nome === 'premios') abrirPremios();
+    if (vista === 'premios') abrirPremios();
+    if (vista === 'sugestoes') { reavaliarPanorama(); renderSugestoes(); }
+    if (mudouVista) global.scrollTo(0, 0);
+    salvar();
   }
 
   /* ======================================================================
@@ -2949,7 +3003,28 @@
         corpo.appendChild(u);
       }
 
-      h('O caminho');
+      h('As quatro seções');
+      ul([
+        '<b>Sugestões</b> — o assistente. Busca o último concurso de todas as modalidades, calcula o retorno de cada uma e monta cestas prontas para o seu orçamento. Um clique gera os números.',
+        '<b>Gerador</b> — o controle fino: tamanho da aposta, volante, estratégia, filtros, conferidor e a cadeia de hash.',
+        '<b>Prêmios</b> — último resultado com rateio, próximo prêmio e o valor esperado faixa a faixa.',
+        '<b>Histórico</b> — os concursos passados que alimentam a estratégia ponderada.'
+      ]);
+
+      h('Como as sugestões são montadas');
+      p('Para cada modalidade com sorteio no prazo escolhido, o assistente calcula quanto volta, em média, de cada real (o <b>retorno</b>), a chance de levar alguma faixa e a chance do prêmio máximo, em cada tamanho de aposta. Depois monta cestas com objetivos diferentes:');
+      ul([
+        '<b>Mix do seu perfil</b> — reparte o orçamento pesando retorno e o seu foco (prêmio grande ou prêmio frequente).',
+        '<b>Onde o real rende mais</b> — concentra no melhor retorno do dia.',
+        '<b>Caça ao prêmio máximo</b> — os maiores prêmios, pesados pelo que cada aposta custa.',
+        '<b>Ganhar alguma coisa</b> — muitas apostas simples onde as faixas de baixo saem com mais frequência.',
+        '<b>Aposta turbinada</b> — uma múltipla grande: mais chance do prêmio máximo num jogo só.',
+        '<b>Fechamento com garantia</b> — um pool de dezenas fechado com garantia mínima de acertos.',
+        '<b>Uma em cada sorteio</b> — uma simples em cada modalidade, rodada após rodada.'
+      ]);
+      p('O retorno de toda loteria fica abaixo de 100%: em média, sempre volta menos do que se aposta. Prêmios acumulados sobem o retorno — é isso que o assistente procura.');
+
+      h('No gerador');
       p('Escolha a modalidade na faixa do topo, ajuste o tamanho da aposta, marque o que quiser no volante, escolha a estratégia e aperte <b>Gerar jogos</b> (ou a tecla <code>G</code>).');
 
       h('O volante');
@@ -2973,7 +3048,7 @@
         'Prêmios acima do limite de isenção pagam 30% de IR. O limite é editável.',
         'Todo prêmio da tabela pode ser editado para simular outro cenário.'
       ]);
-      p('No <b>Conferidor</b>, <b>Buscar resultado oficial</b> preenche as dezenas e traz o rateio: cada jogo passa a mostrar quanto recebe em reais, contando todas as apostas simples de um jogo com mais dezenas. No <b>Histórico</b>, dá para baixar os últimos concursos em vez de colar.');
+      p('Em <b>Conferir</b>, <b>Buscar resultado oficial</b> preenche as dezenas e traz o rateio: cada jogo passa a mostrar quanto recebe em reais, contando todas as apostas simples de um jogo com mais dezenas. No <b>Histórico</b>, dá para baixar os últimos concursos em vez de colar.');
 
       h('Semente');
       p('A semente comanda todo o sorteio. Guardando a semente e os mesmos ajustes, você reproduz exatamente os mesmos jogos — útil para conferir depois ou dividir um bolão.');
@@ -3214,7 +3289,7 @@
         ctx.stroke();
 
         ctx.fillStyle = cores.tinta;
-        ctx.font = "700 15px 'Martian Mono', ui-monospace, monospace";
+        ctx.font = "700 15px 'Inter', system-ui, sans-serif";
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(Math.round(prog * 100) + '%', cx, cy);
@@ -3273,6 +3348,718 @@
   }
 
   /* ======================================================================
+     SUGESTÕES — o assistente de apostas
+     ==================================================================== */
+
+  var panorama = { carregando: false, refinando: null, t: 0, erro: null, avals: {} };
+  var cestaGerada = null;
+
+  /** "R$ 97 mi", "R$ 8,8 mi", "R$ 850 mil". */
+  function reaisCurto(v) {
+    if (!v) return '—';
+    function f(x, casas) { return x.toLocaleString('pt-BR', { maximumFractionDigits: casas }); }
+    if (v >= 1e9) return 'R$ ' + f(v / 1e9, 1) + ' bi';
+    if (v >= 1e6) return 'R$ ' + f(v / 1e6, v < 1e7 ? 1 : 0) + ' mi';
+    if (v >= 1e4) return 'R$ ' + f(v / 1e3, 0) + ' mil';
+    return LC.moeda(v);
+  }
+
+  function metaTile(l) {
+    var a = panorama.avals[l.id];
+    if (a && a.estimativa) return reaisCurto(a.estimativa) + ' · ' + a.quando;
+    return l.sorteio;
+  }
+
+  function atualizarTiles() {
+    $$('.tile').forEach(function (t, i) {
+      var m = $('.tile__meta', t);
+      if (m) m.textContent = metaTile(LC.LOTERIAS[i]);
+    });
+  }
+
+  function confEV() {
+    return {
+      dividir: estado.premios.dividir,
+      ir: estado.premios.ir,
+      limiteIR: estado.premios.limiteIR,
+      amostra: estado.premios.amostra
+    };
+  }
+
+  /** Concursos guardados até o último — servem de amostra antes de buscar mais. */
+  function amostraGuardada(l, u) {
+    var g = LC.resultados.guardados(l).filter(function (r) { return r.concurso <= u.concurso; });
+    if (!g.length || g[0].concurso !== u.concurso) g.unshift(u);
+    return g;
+  }
+
+  function avaliarModalidade(l) {
+    var o = oficial[l.id];
+    if (!o || !o.ultimo) return;
+    var amostra = o.amostra && o.amostra.length ? o.amostra : amostraGuardada(l, o.ultimo);
+    panorama.avals[l.id] = LC.assistente.avaliar(l, { ultimo: o.ultimo, amostra: amostra }, confEV(), new Date());
+  }
+
+  function reavaliarPanorama() {
+    LC.LOTERIAS.forEach(avaliarModalidade);
+  }
+
+  /** Último concurso de todas as modalidades — é o que alimenta as sugestões. */
+  function carregarPanorama(forcar) {
+    if (panorama.carregando) return;
+    panorama.carregando = true;
+    panorama.erro = null;
+    renderStatusPanorama();
+
+    var fila = LC.LOTERIAS.slice(), falhas = 0;
+    function trabalhador() {
+      var l = fila.shift();
+      if (!l) return Promise.resolve();
+      return LC.resultados.buscarConcurso(l, null, { forcar: !!forcar }).then(function (u) {
+        var o = oficial[l.id] || (oficial[l.id] = {});
+        if (!o.ultimo || o.ultimo.concurso !== u.concurso || !o.amostra) {
+          o.ultimo = u;
+          o.amostra = amostraGuardada(l, u);
+          o.n = o.amostra.length;
+        } else {
+          o.ultimo = u;
+        }
+        avaliarModalidade(l);
+        if (estado.vista === 'sugestoes') renderPanorama();
+      }, function () { falhas++; }).then(trabalhador);
+    }
+
+    Promise.all([trabalhador(), trabalhador(), trabalhador()]).then(function () {
+      panorama.carregando = false;
+      panorama.t = Date.now();
+      if (falhas >= LC.LOTERIAS.length) {
+        panorama.erro = 'Sem conexão com a CAIXA nem com o espelho comunitário.';
+      }
+      atualizarTiles();
+      if (estado.vista === 'sugestoes') renderSugestoes();
+      refinarAmostras();
+    });
+  }
+
+  /**
+   * As faixas de baixo usam a média paga nos concursos recentes. Na primeira
+   * visita só há o último concurso; aqui, em segundo plano, o app busca os 10
+   * mais recentes de cada modalidade (ficam guardados para as próximas vezes).
+   */
+  function refinarAmostras() {
+    if (panorama.refinando) return;
+    var alvo = 10;
+    var fila = LC.LOTERIAS.filter(function (l) {
+      var o = oficial[l.id];
+      return LC.valor.suporta(l) && o && o.ultimo && (o.n || 0) < alvo;
+    });
+    if (!fila.length) return;
+    var total = fila.length, feitos = 0;
+    panorama.refinando = { feitos: 0, total: total };
+    renderStatusPanorama();
+
+    function proxima() {
+      var l = fila.shift();
+      if (!l) {
+        panorama.refinando = null;
+        renderStatusPanorama();
+        if (estado.vista === 'sugestoes') renderSugestoes();
+        return;
+      }
+      LC.resultados.buscarRecentes(l, alvo).then(function (lista) {
+        var o = oficial[l.id];
+        if (o && lista.length > (o.n || 0)) {
+          o.amostra = lista;
+          o.n = lista.length;
+          o.ultimo = lista.ultimo;
+          o.falhas = lista.falhas;
+          avaliarModalidade(l);
+        }
+      }, function () { /* segue com o que tem */ }).then(function () {
+        feitos++;
+        panorama.refinando = { feitos: feitos, total: total };
+        renderStatusPanorama();
+        if (estado.vista === 'sugestoes') renderPanorama();
+        proxima();
+      });
+    }
+    proxima();
+  }
+
+  function renderStatusPanorama() {
+    var s = $('#sugStatus');
+    if (!s) return;
+    limpar(s);
+    s.appendChild(el('i'));
+    s.className = 'status';
+    var btn = $('#btnAtualizarPanorama');
+    if (panorama.carregando) {
+      s.classList.add('is-carregando');
+      s.appendChild(document.createTextNode('buscando concursos…'));
+    } else if (panorama.erro) {
+      s.appendChild(document.createTextNode(panorama.erro));
+    } else if (panorama.refinando) {
+      s.classList.add('is-carregando');
+      s.appendChild(document.createTextNode('refinando médias · ' + panorama.refinando.feitos + ' de ' + panorama.refinando.total));
+    } else if (panorama.t) {
+      s.classList.add('is-ok');
+      s.appendChild(document.createTextNode('atualizado às ' +
+        new Date(panorama.t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })));
+    }
+    if (btn) btn.disabled = !!panorama.carregando;
+  }
+
+  function avaliacoes() {
+    return LC.LOTERIAS.map(function (l) { return panorama.avals[l.id]; }).filter(Boolean);
+  }
+
+  function limiteHorizonte() {
+    return { hoje: 0, amanha: 1, semana: 7 }[estado.assistente.horizonte];
+  }
+
+  function renderSugestoes() {
+    renderStatusPanorama();
+    renderHeroSug();
+    renderPanorama();
+    renderPrefsSug();
+    renderCestas();
+  }
+
+  function renderHeroSug() {
+    var hoje = new Date();
+    var d = hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+    $('#sugHoje').textContent = d.charAt(0).toUpperCase() + d.slice(1);
+
+    var avs = avaliacoes();
+    var resumo = $('#sugResumo');
+    limpar(resumo);
+    if (!avs.length) {
+      resumo.textContent = panorama.erro
+        ? 'Não consegui buscar os concursos agora. Confira a conexão e toque em Atualizar dados.'
+        : 'Buscando os concursos de todas as modalidades…';
+      $('#sugTitulo').textContent = 'O que jogar hoje';
+      return;
+    }
+
+    var deHoje = avs.filter(function (a) { return a.dias === 0; });
+    var comEV = avs.filter(function (a) { return a.retorno != null && a.dias != null && a.dias >= 0 && a.dias <= 1; });
+    var maior = avs.filter(function (a) { return a.dias != null && a.dias >= 0; })
+      .sort(function (x, y) { return y.estimativa - x.estimativa; })[0];
+    var melhor = comEV.slice().sort(function (x, y) { return y.retorno - x.retorno; })[0];
+
+    $('#sugTitulo').textContent = deHoje.length ? 'O que jogar hoje' : 'O que jogar no próximo sorteio';
+    function frase(txt, forte) {
+      resumo.appendChild(document.createTextNode(txt));
+      if (forte) resumo.appendChild(el('b', null, forte));
+    }
+    if (deHoje.length) frase(deHoje.length + (deHoje.length === 1 ? ' sorteio hoje. ' : ' sorteios hoje. '));
+    else frase('Nenhum sorteio hoje. ');
+    if (maior) {
+      frase('O maior prêmio em jogo é o da ', maior.lot.nome + ', ' + reaisCurto(maior.estimativa));
+      frase(' (' + maior.quando + '). ');
+    }
+    if (melhor) {
+      frase('O melhor retorno está na ', melhor.lot.nome);
+      frase(': voltam ' + LC.moeda(melhor.retorno * 100) + ' de cada R$ 100, em média.');
+    }
+  }
+
+  function renderPanorama() {
+    var alvo = $('#sugPanorama');
+    if (!alvo) return;
+    limpar(alvo);
+    var lim = limiteHorizonte();
+    var avs = avaliacoes();
+    var maxRet = Math.max.apply(null, avs.map(function (a) { return a.retorno || 0; }).concat([0.01]));
+    var comRet = avs.filter(function (a) { return a.retorno != null && a.dias != null && a.dias >= 0 && a.dias <= lim; });
+    var melhorRet = comRet.slice().sort(function (x, y) { return y.retorno - x.retorno; })[0];
+    var maiorEst = avs.filter(function (a) { return a.dias != null && a.dias >= 0; })
+      .sort(function (x, y) { return y.estimativa - x.estimativa; })[0];
+
+    var ordem = LC.LOTERIAS.slice().sort(function (x, y) {
+      var a = panorama.avals[x.id], b = panorama.avals[y.id];
+      if (!a || !b) return (a ? -1 : 0) + (b ? 1 : 0);
+      var da = a.dias == null || a.dias < 0 ? 99 : a.dias, db = b.dias == null || b.dias < 0 ? 99 : b.dias;
+      return da - db || b.estimativa - a.estimativa;
+    });
+
+    ordem.forEach(function (l) {
+      var a = panorama.avals[l.id];
+      var c = el('button', 'sorteio');
+      c.type = 'button';
+      c.style.setProperty('--t', l.brand);
+      var cab = el('div', 'sorteio__cab');
+      cab.appendChild(el('span', 'sorteio__nome', l.nome));
+      var q = el('span', 'sorteio__quando', a ? a.quando : '…');
+      if (a && a.dias === 0) q.classList.add('is-hoje');
+      cab.appendChild(q);
+      c.appendChild(cab);
+
+      if (!a) {
+        c.classList.add('is-fantasma');
+        c.appendChild(el('div', 'sorteio__premio', 'R$ 00 mi'));
+        c.appendChild(el('div', 'sorteio__linha', 'carregando'));
+        alvo.appendChild(c);
+        return;
+      }
+
+      var fora = a.dias == null || a.dias < 0 || a.dias > lim || estado.assistente.modalidades[l.id] === false;
+      if (fora) c.classList.add('is-fora');
+
+      c.appendChild(el('div', 'sorteio__premio', a.estimativa ? reaisCurto(a.estimativa) : l.tipo === 'bilhete' ? 'prêmio fixo' : '—'));
+      var dica = l.nome + (a.concurso ? ' · concurso ' + a.concurso : '') + ' · sorteio ' + a.quando;
+      if (a.estimativa) dica += '\nPrêmio estimado: ' + LC.moeda(a.estimativa);
+
+      if (a.retorno != null) {
+        var ret = el('div', 'sorteio__linha');
+        ret.appendChild(el('span', null, 'retorno'));
+        var barra = el('span', 'sorteio__barra');
+        var preen = el('i');
+        preen.style.width = Math.max(4, a.retorno / maxRet * 100) + '%';
+        barra.appendChild(preen);
+        ret.appendChild(barra);
+        ret.appendChild(el('b', null, fmtPct(a.retorno)));
+        c.appendChild(ret);
+        dica += '\nRetorno: voltam em média ' + LC.moeda(a.retorno * 100) + ' de cada R$ 100' +
+          '\nAlgum prêmio numa aposta simples: ' + fmtChance(a.simples.chanceAlgum) +
+          '\nPrêmio máximo numa aposta simples: ' + fmtChance(a.simples.chanceTopo);
+      } else {
+        c.appendChild(el('div', 'sorteio__linha', 'sem valor esperado'));
+        dica += l.tipo === 'placares' ? '\nDepende de partidas reais.' : '\nBilhetes com prêmios fixos por extração.';
+      }
+      c.title = dica + '\n\nClique para ver os prêmios.';
+
+      var selos = el('div', 'sorteio__selos');
+      if (melhorRet === a) selos.appendChild(el('span', 'selo selo--ok', 'melhor retorno'));
+      if (maiorEst === a) selos.appendChild(el('span', 'selo selo--marca', 'maior prêmio'));
+      if (a.acumulou && l.tipo !== 'bilhete') selos.appendChild(el('span', 'selo selo--alerta', 'acumulada'));
+      c.appendChild(selos);
+
+      c.addEventListener('click', function () {
+        selecionarModalidade(l.id);
+        trocarAba('premios');
+      });
+      alvo.appendChild(c);
+    });
+  }
+
+  function selecionarModalidade(id) {
+    if (estado.lotId === id) return;
+    estado.lotId = id;
+    conferencia = null;
+    resultado = null;
+    aplicarModalidade();
+    renderJogos();
+    renderEstatisticas();
+    salvar();
+  }
+
+  function renderPrefsSug() {
+    var p = estado.assistente;
+    var inO = $('#inSugOrcamento');
+    if (document.activeElement !== inO) inO.value = p.orcamento;
+    $('#outSugOrcamento').textContent = LC.moeda(p.orcamento).replace(',00', '');
+    $$('#atalhosSugOrcamento button').forEach(function (b) {
+      b.classList.toggle('is-ativa', Number(b.dataset.valor) === p.orcamento);
+    });
+    $$('#segPerfil button').forEach(function (b) {
+      b.classList.toggle('is-ativa', Math.abs(Number(b.dataset.perfil) - p.perfil) < 0.01);
+    });
+    $$('#segHorizonte button').forEach(function (b) {
+      b.classList.toggle('is-ativa', b.dataset.horizonte === p.horizonte);
+    });
+    $$('#chipsEstilos .chip').forEach(function (b) {
+      var ativa = p.estilos[b.dataset.estilo] !== false;
+      b.classList.toggle('is-ativa', ativa);
+      b.setAttribute('aria-pressed', ativa ? 'true' : 'false');
+    });
+    var chips = $('#chipsModalidades');
+    if (!chips.childNodes.length) {
+      LC.LOTERIAS.forEach(function (l) {
+        if (!LC.valor.suporta(l)) return;
+        var b = el('button', 'chip chip--lot', l.curto);
+        b.type = 'button';
+        b.dataset.lot = l.id;
+        b.style.setProperty('--t', l.brand);
+        chips.appendChild(b);
+      });
+    }
+    $$('.chip', chips).forEach(function (b) {
+      var ativa = p.modalidades[b.dataset.lot] !== false;
+      b.classList.toggle('is-ativa', ativa);
+      b.setAttribute('aria-pressed', ativa ? 'true' : 'false');
+    });
+    $('#inSugEstrategia').value = p.estrategia;
+    $('#inSugDividir').checked = !!estado.premios.dividir;
+    $('#inSugIR').checked = !!estado.premios.ir;
+  }
+
+  function montarCestasAgora() {
+    return LC.assistente.montarCestas(avaliacoes(), estado.assistente, { moeda: LC.moeda, curto: reaisCurto });
+  }
+
+  function renderCestas() {
+    var alvo = $('#sugCestas');
+    var aviso = $('#sugAviso');
+    limpar(alvo); limpar(aviso);
+    if (!avaliacoes().length) {
+      if (!panorama.erro) {
+        for (var i = 0; i < 2; i++) {
+          var f = el('div', 'cesta');
+          f.style.minHeight = '220px';
+          f.style.opacity = '.5';
+          alvo.appendChild(f);
+        }
+      }
+      return;
+    }
+    var r = montarCestasAgora();
+    if (r.aviso) aviso.appendChild(el('div', 'nota nota--alerta', r.aviso));
+    r.cestas.forEach(function (c, i) { alvo.appendChild(cartaoCesta(c, i)); });
+  }
+
+  function cartaoCesta(c, i) {
+    var art = el('article', 'cesta' + (c.recomendada ? ' is-recomendada' : ''));
+    art.style.setProperty('--i', i);
+
+    var cab = el('header', 'cesta__cab');
+    var linha = el('div', 'cesta__titulo-linha');
+    linha.appendChild(el('h3', 'cesta__titulo', c.titulo));
+    if (c.recomendada) linha.appendChild(el('span', 'selo selo--marca', 'recomendada'));
+    linha.appendChild(el('span', 'selo', c.tag));
+    cab.appendChild(linha);
+    cab.appendChild(el('p', 'cesta__porque', c.porque));
+    art.appendChild(cab);
+
+    var ul = el('ul', 'cesta__itens');
+    c.itens.forEach(function (it) {
+      var li = el('li', 'item');
+      li.style.setProperty('--t', it.lot.brand);
+      li.appendChild(el('span', 'item__cor'));
+      var tx = el('div', 'item__texto');
+      var nome = el('span', 'item__nome', it.lot.nome + ' ');
+      nome.appendChild(el('span', 'item__formato', '· ' + it.rotulo));
+      tx.appendChild(nome);
+      var meta = 'sorteio ' + it.aval.quando;
+      if (it.aval.estimativa) meta += ' · prêmio ' + reaisCurto(it.aval.estimativa);
+      meta += ' · algum prêmio ' + (it.chanceAlgum >= 0.2 ? fmtPct(it.chanceAlgum) : fmtChance(it.chanceAlgum));
+      tx.appendChild(el('span', 'item__meta', meta));
+      li.appendChild(tx);
+      li.appendChild(el('span', 'item__custo', LC.moeda(it.custo)));
+      var b = el('button', 'btn btn--fino btn--fantasma item__acao', 'Montar');
+      b.type = 'button';
+      b.title = 'Levar esta aposta para o gerador, para ajustar volante, filtros e estratégia';
+      b.addEventListener('click', function () { montarNoGerador(it); });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    art.appendChild(ul);
+
+    var t = c.totais;
+    var nums = el('div', 'cesta__numeros');
+    function numero(rot, val, sub) {
+      var d = el('div', 'cesta__num');
+      d.appendChild(el('span', null, rot));
+      d.appendChild(el('strong', null, val));
+      if (sub) d.appendChild(el('small', null, sub));
+      nums.appendChild(d);
+    }
+    numero('Custo', LC.moeda(t.custo), t.jogos + (t.jogos === 1 ? ' jogo' : ' jogos') + (t.sobra >= 0.01 ? ' · sobra ' + LC.moeda(t.sobra) : ''));
+    numero('Volta em média', LC.moeda(t.ev), fmtPct(t.retorno) + ' do valor');
+    numero('Algum prêmio', t.chanceAlgum >= 0.2 ? fmtPct(t.chanceAlgum) : fmtChance(t.chanceAlgum), 'chance aproximada');
+    numero('Prêmio máximo', fmtChance(t.chanceTopo), t.maiorPremio ? 'até ' + reaisCurto(t.maiorPremio) : '');
+    art.appendChild(nums);
+
+    var pe = el('footer', 'cesta__pe');
+    var gerarB = el('button', 'btn ' + (c.recomendada ? 'btn--principal' : 'btn--escuro'), 'Gerar os números');
+    gerarB.type = 'button';
+    gerarB.addEventListener('click', function () { gerarCesta(c, gerarB); });
+    pe.appendChild(gerarB);
+    var copiarB = el('button', 'btn', 'Copiar lista');
+    copiarB.type = 'button';
+    copiarB.addEventListener('click', function () {
+      LC.copiar(textoCesta(c, null)).then(function () { toast('Lista de apostas copiada.', 'ok'); },
+        function () { mostrarTexto('Lista de apostas', textoCesta(c, null)); });
+    });
+    pe.appendChild(copiarB);
+    art.appendChild(pe);
+    return art;
+  }
+
+  function textoCesta(c, grupos) {
+    var linhas = [];
+    linhas.push('LOTOCALC — ' + c.titulo + ' (' + new Date().toLocaleDateString('pt-BR') + ')');
+    linhas.push('Custo ' + LC.moeda(c.totais.custo) + ' · volta em média ' + LC.moeda(c.totais.ev));
+    linhas.push('-'.repeat(56));
+    if (!grupos) {
+      c.itens.forEach(function (it) {
+        linhas.push(it.lot.nome + ' — ' + it.rotulo + ' — ' + LC.moeda(it.custo) + ' (sorteio ' + it.aval.quando + ')');
+      });
+      return linhas.join('\n') + '\n';
+    }
+    grupos.forEach(function (g) {
+      linhas.push('');
+      linhas.push(g.lot.nome + ' — ' + g.item.rotulo + ' — ' + LC.moeda(g.res.custo));
+      if (g.pools) g.pools.forEach(function (p, i) {
+        linhas.push('  pool ' + (g.pools.length > 1 ? (i + 1) + ' ' : '') + p.map(function (n) { return LC.fmt(g.lot, n); }).join(' '));
+      });
+      g.res.jogos.forEach(function (j) {
+        linhas.push('  ' + String(j.n).padStart(3, ' ') + '  ' + LC.jogoTexto(g.lot, j, ' '));
+      });
+    });
+    return linhas.join('\n') + '\n';
+  }
+
+  /** Configuração do motor para um item da cesta. */
+  function configDoItem(it, semente) {
+    var l = it.lot, f = it.formato;
+    var k = f.k || l.escolhaMin;
+    var estr = l.tipo === 'dezenas' ? estado.assistente.estrategia : 'aleatorio';
+    var cfg = {
+      lotId: l.id, qtd: it.qtd, dezenas: k,
+      fixas: [], excluidas: [],
+      estrategia: estr, filtros: {}, seed: semente,
+      historico: [], anterior: [],
+      evitarRepetidos: true, diversidadeMax: null,
+      cadeia: estado.cadeia,
+      extras: { trevosQtd: f.kt || 0, trevosFixas: [] }
+    };
+    if (l.extra && l.extra.tipo === 'lista') cfg.extras[l.extra.id] = '__aleatorio__';
+    if (l.tipo === 'colunas') cfg.supersete = { porColuna: f.lens.slice(), fixas: [] };
+    if (estr === 'equilibrado') {
+      var sug = LC.sugerirFiltros(l, k);
+      ['soma', 'pares', 'consecutivos', 'maxTerminacao', 'colunas'].forEach(function (id) {
+        if (sug[id]) cfg.filtros[id] = { ativo: true, min: sug[id].min, max: sug[id].max };
+      });
+    }
+    return cfg;
+  }
+
+  function gerarItem(it, semente) {
+    if (!it.fechamento) {
+      var r = LC.gerar(configDoItem(it, semente));
+      return { item: it, lot: it.lot, res: r };
+    }
+    // fechamento: um pool por cópia, cada um fechado com garantia
+    var fe = it.fechamento, l = it.lot;
+    var rng = new LC.Rng(semente + ':pool');
+    var jogos = [], pools = [], avisos = [];
+    for (var c = 0; c < (it.copias || 1); c++) {
+      var pool = rng.amostra(LC.universo(l), fe.pool).sort(function (a, b) { return a - b; });
+      pools.push(pool);
+      var r2 = LC.gerar({
+        lotId: l.id, qtd: 400, dezenas: fe.k, fixas: pool, excluidas: [],
+        estrategia: 'fechamento', seed: semente + ':' + c,
+        fechamento: { modo: 'reduzido', garantirSe: fe.se, garantirAcertos: fe.acertos }
+      });
+      r2.jogos.forEach(function (j) { jogos.push(j); });
+      r2.avisos.forEach(function (a) { if (avisos.indexOf(a) === -1) avisos.push(a); });
+    }
+    jogos.forEach(function (j, i) { j.n = i + 1; });
+    return {
+      item: it, lot: l, pools: pools,
+      res: { lotId: l.id, jogos: jogos, semente: semente, avisos: avisos, custo: jogos.reduce(function (s, j) { return s + j.custo; }, 0), ms: 0 }
+    };
+  }
+
+  function gerarCesta(c, botao) {
+    if (botao) { botao.disabled = true; botao.textContent = 'Gerando…'; }
+    setTimeout(function () {
+      try {
+        var base = estado.semente || LC.novaSemente();
+        var grupos = c.itens.map(function (it, i) { return gerarItem(it, base + '-' + (i + 1)); });
+        cestaGerada = { cesta: c, grupos: grupos, semente: base };
+        renderCestaGerada();
+        var alvo = $('#sugGerado');
+        if (alvo.scrollIntoView) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        var total = grupos.reduce(function (s, g) { return s + g.res.jogos.length; }, 0);
+        toast(total + ' jogos prontos para "' + c.titulo + '".', 'ok');
+      } catch (e) {
+        toast(e.message || 'Não foi possível gerar esta cesta.', 'erro');
+      } finally {
+        if (botao) { botao.disabled = false; botao.textContent = 'Gerar os números'; }
+      }
+    }, 16);
+  }
+
+  function renderCestaGerada() {
+    var alvo = $('#sugGerado');
+    limpar(alvo);
+    if (!cestaGerada) { alvo.hidden = true; return; }
+    alvo.hidden = false;
+    var c = cestaGerada.cesta;
+    var total = cestaGerada.grupos.reduce(function (s, g) { return s + g.res.custo; }, 0);
+    var nJogos = cestaGerada.grupos.reduce(function (s, g) { return s + g.res.jogos.length; }, 0);
+
+    var topo = el('div', 'cartao__topo');
+    var tt = el('div');
+    tt.appendChild(el('h2', 'cartao__titulo', 'Números da cesta · ' + c.titulo));
+    tt.appendChild(el('p', 'cartao__texto', nJogos + ' jogos · ' + LC.moeda(total) + ' · semente ' + cestaGerada.semente));
+    topo.appendChild(tt);
+    var acoes = el('div', 'linha-acoes');
+    var copiar = el('button', 'btn btn--principal btn--fino', 'Copiar todos');
+    copiar.type = 'button';
+    copiar.addEventListener('click', function () {
+      var txt = textoCesta(c, cestaGerada.grupos);
+      LC.copiar(txt).then(function () { toast('Todos os jogos copiados.', 'ok'); },
+        function () { mostrarTexto('Jogos da cesta', txt); });
+    });
+    var ver = el('button', 'btn btn--fino', 'Ver em texto');
+    ver.type = 'button';
+    ver.addEventListener('click', function () { mostrarTexto('Jogos da cesta', textoCesta(c, cestaGerada.grupos)); });
+    var fechar = el('button', 'btn btn--fino btn--fantasma', 'Fechar');
+    fechar.type = 'button';
+    fechar.addEventListener('click', function () { cestaGerada = null; renderCestaGerada(); });
+    acoes.appendChild(copiar); acoes.appendChild(ver); acoes.appendChild(fechar);
+    topo.appendChild(acoes);
+    alvo.appendChild(topo);
+
+    cestaGerada.grupos.forEach(function (g) {
+      var grupo = el('div', 'gerado__grupo');
+      tingir(grupo, g.lot);
+      var cab = el('div', 'gerado__cab');
+      cab.style.setProperty('--t', g.lot.brand);
+      cab.appendChild(el('span', 'gerado__nome', g.lot.nome));
+      cab.appendChild(el('span', 'gerado__meta', g.item.rotulo + ' · ' + LC.moeda(g.res.custo) + ' · sorteio ' + g.item.aval.quando));
+      var abrir = el('button', 'btn btn--fino', 'Abrir no gerador');
+      abrir.type = 'button';
+      abrir.title = 'Leva estes jogos para o gerador, onde dá para conferir, exportar e imprimir';
+      abrir.addEventListener('click', function () { abrirGrupoNoGerador(g); });
+      cab.appendChild(abrir);
+      grupo.appendChild(cab);
+      if (g.pools) {
+        g.pools.forEach(function (p, i) {
+          var ln = el('div', 'lista-dezenas');
+          ln.appendChild(el('span', 'pill', g.pools.length > 1 ? 'pool ' + (i + 1) : 'pool'));
+          p.forEach(function (n) {
+            var pl = el('span', 'pill');
+            pl.appendChild(el('b', null, LC.fmt(g.lot, n)));
+            ln.appendChild(pl);
+          });
+          grupo.appendChild(ln);
+        });
+      }
+      var lista = el('div', 'jogos');
+      g.res.jogos.forEach(function (j, i) {
+        lista.appendChild(cupom(g.lot, j, i, { avulso: true }));
+      });
+      grupo.appendChild(lista);
+      alvo.appendChild(grupo);
+    });
+  }
+
+  function mostrarTexto(titulo, texto) {
+    abrirModal(titulo, function (corpo) {
+      var ta = el('textarea', 'previa');
+      ta.value = texto;
+      ta.readOnly = true;
+      corpo.appendChild(ta);
+    }, function (pe) {
+      var b = el('button', 'btn btn--principal', 'Copiar');
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        LC.copiar(texto).then(function () { toast('Copiado.', 'ok'); },
+          function () { toast('O navegador bloqueou a cópia — selecione e use Ctrl+C.', 'erro'); });
+      });
+      pe.appendChild(b);
+    });
+  }
+
+  function sincronizarQtd() {
+    $('#inQtd').value = estado.qtd;
+    $('#outQtd').textContent = estado.qtd;
+    pintarRange($('#inQtd'));
+    marcarAtalhoQtd();
+    aplicarModoLote();
+  }
+
+  /** Leva um item de cesta para o gerador, com tamanho, quantidade e estratégia já ajustados. */
+  function montarNoGerador(it) {
+    var l = it.lot, f = it.formato;
+    estado.lotId = l.id;
+    resultado = null;
+    conferencia = null;
+    estado.modoLote = 'qtd';
+    if (l.tipo === 'colunas') {
+      estado.dezenas[l.id] = 1;
+      estado.ssFixas = {};
+    } else {
+      estado.dezenas[l.id] = f.k;
+      if (f.kt) estado.extras.trevosQtd = f.kt;
+    }
+    if (it.fechamento) {
+      var fe = it.fechamento;
+      estado.estrategia = 'fechamento';
+      estado.fechamento = { modo: 'reduzido', garantirSe: fe.se, garantirAcertos: fe.acertos, embaralhar: false };
+      var pool = new LC.Rng(LC.novaSemente()).amostra(LC.universo(l), fe.pool);
+      var m = {};
+      pool.forEach(function (n) { m[n] = 'fixa'; });
+      estado.marcas[l.id] = m;
+      estado.qtd = Math.min(500, it.jogosPorFechamento || it.qtd);
+    } else {
+      if (l.tipo === 'dezenas') estado.estrategia = estado.assistente.estrategia;
+      estado.qtd = Math.min(500, it.qtd);
+    }
+    sincronizarQtd();
+    aplicarModalidade();
+    renderJogos();
+    renderEstatisticas();
+    salvar();
+    trocarAba('jogos');
+    toast(it.fechamento
+      ? 'Fechamento montado: ' + it.fechamento.pool + ' dezenas sorteadas no volante. Troque as que quiser e gere.'
+      : 'Aposta montada: ' + l.nome + ', ' + it.rotulo + '. É só gerar.', 'ok');
+  }
+
+  function abrirGrupoNoGerador(g) {
+    selecionarModalidade(g.lot.id);
+    resultado = Object.assign({}, g.res, { estrategiaNome: 'Sugestão · ' + cestaGerada.cesta.titulo });
+    conferencia = null;
+    renderJogos();
+    renderEstatisticas();
+    trocarAba('jogos');
+  }
+
+  function ligarSugestoes() {
+    var p = estado.assistente;
+    function mudou() { salvar(); renderSugestoes(); }
+
+    $('#inSugOrcamento').addEventListener('input', function () {
+      var v = num(this.value, 0);
+      if (v > 0) { p.orcamento = Math.min(100000, v); mudou(); }
+    });
+    $$('#atalhosSugOrcamento button').forEach(function (b) {
+      b.addEventListener('click', function () { p.orcamento = Number(b.dataset.valor); mudou(); });
+    });
+    $$('#segPerfil button').forEach(function (b) {
+      b.addEventListener('click', function () { p.perfil = Number(b.dataset.perfil); mudou(); });
+    });
+    $$('#segHorizonte button').forEach(function (b) {
+      b.addEventListener('click', function () { p.horizonte = b.dataset.horizonte; mudou(); });
+    });
+    $$('#chipsEstilos .chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        p.estilos[b.dataset.estilo] = p.estilos[b.dataset.estilo] === false;
+        mudou();
+      });
+    });
+    $('#chipsModalidades').addEventListener('click', function (ev) {
+      var b = ev.target.closest && ev.target.closest('[data-lot]');
+      if (!b) return;
+      var id = b.dataset.lot;
+      p.modalidades[id] = p.modalidades[id] === false;
+      mudou();
+    });
+    $('#inSugEstrategia').addEventListener('change', function () { p.estrategia = this.value; salvar(); });
+    $('#inSugDividir').addEventListener('change', function () {
+      estado.premios.dividir = this.checked; reavaliarPanorama(); mudou();
+    });
+    $('#inSugIR').addEventListener('change', function () {
+      estado.premios.ir = this.checked; reavaliarPanorama(); mudou();
+    });
+  }
+
+  /* ======================================================================
      TEMA
      ==================================================================== */
 
@@ -3282,6 +4069,7 @@
     aplicarCoresMarca();
     forja.redesenhar();
     atualizarImpressao();
+    if (cestaGerada) renderCestaGerada();
   }
 
   function alternarTema() {
@@ -3398,6 +4186,10 @@
     $$('.aba').forEach(function (a) {
       a.addEventListener('click', function () { trocarAba(a.dataset.aba); });
     });
+    $$('[data-vista]').forEach(function (b) {
+      b.addEventListener('click', function () { trocarAba(b.dataset.vista); });
+    });
+    ligarSugestoes();
 
     // controles da forja
     [['inTemperatura', 'temperatura', 'outTemperatura', 2],
@@ -3452,6 +4244,7 @@
         case 'conferir': conferir(); break;
         case 'buscar-resultado': buscarResultadoOficial(); break;
         case 'atualizar-premios': carregarOficial(true); break;
+        case 'atualizar-panorama': carregarPanorama(true); break;
         case 'baixar-historico': baixarHistorico(); break;
         case 'limpar-conferencia':
           conferencia = null;
@@ -3562,7 +4355,8 @@
 
     aplicarModalidade();
     renderJogos();
-    trocarAba('jogos');
+    trocarAba(estado.vista || 'sugestoes');
+    carregarPanorama(false);
   }
 
   if (document.readyState === 'loading') {
